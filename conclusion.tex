@@ -1,0 +1,13 @@
+\section{Conclusion and Limitations}
+\label{sec:conclusion}
+
+We presented QSV, a framework for expressing and automatically validating quantum state preparation programs.
+The core of QSV is a quantum language \pqasm, which can express a restricted class of quantum programs that are efficiently testable for certain properties and are useful for implementing state preparation programs. 
+We have verified the translator from \pqasm to \sqir and have validated (or randomly tested) many programs written in \pqasm.
+We have used \pqasm to implement state preparation programs useful in quantum computation, such as the ones in \Cref{fig:qiskit-data}.
+We hope this work will be the basis for building a quantum validation framework for validating quantum programs on classical computers.
+
+Our QSV is capable of defining most quantum program patterns with program validation. As mentioned in \Cref{sec:intro}, QSV targets validating state preparation programs. For almost all quantum programs, QSV is able to validate the most significant part of the program. For example, the validated modular multiplication program in \Cref{fig:mod-mult} is essentially 90\% of Shor's algorithm, except for the final inverse QFT gate and measurement.
+
+Our type system specifically locates Hadamard operations, but there are no actual restrictions on Hadamard operations, as users can easily define similar behaviors via our \cn{Ry} and oracle operations. Via our type system, we identify the beginning Hadamard operations as a general quantum algorithm component to generate superposition sources so that QSV can locate the places to create random inputs for validating programs. We recognize the superposition state generation in many quantum algorithms as the major bottleneck for testing quantum programs; therefore, we utilize types to identify them, with special treatment to transform the superposition states to a simple and testable format.
+

@@ -1,0 +1,6 @@
+One of the key steps in quantum algorithms is to prepare an initial quantum superposition state with different kinds of features. These so-called \emph{state preparation} algorithms are essential to the behavior of quantum algorithms, and complicated state preparation algorithms are difficult to program correctly and effectively.
+This paper presents QSV: a high-assurance framework implemented with the Rocq proof assistant, permitting the development of quantum state preparation programs and validating them to correctly reflect quantum program behaviors.
+The key in the framework is to reduce the program correctness assurance of a program containing a quantum superposition state to the program correctness assurance for the program state without superposition.
+The reduction allows the development of \textit{an effective framework for validating quantum state preparation algorithm implementations on a classical computer} --- considered a hard problem with no clear solution until this point.
+We utilize the QuickChick property-based testing framework to validate state preparation programs.
+We evaluated the effectiveness of our approach over 5 case studies implemented using QSV; such cases are not even simulatable in the current quantum simulators.

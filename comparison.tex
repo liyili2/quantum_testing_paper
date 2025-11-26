@@ -1,0 +1,152 @@
+\section{Related Work}
+\label{sec:related}
+
+This section gives related work beyond the discussion in \Cref{sec:implementation}.
+%Essentially, \qafny is qualitatively different from the other works, so we mainly use the quantitative evaluation to explain the critical differences between \qafny and other frameworks.
+
+\noindent\textbf{\textit{Quantum Circuit Languages.}}
+Prior research has developed circuit-level compilers to compile quantum circuit languages to quantum computers, such as Qiskit \cite{Qiskit2019}, \tket \cite{tket}, Staq \cite{Amy2020}, PyZX \cite{Kissinger2019}, Nam \emph{et al.} \cite{Nam2018}, quilc~\cite{quilc}, Cirq~\cite{cirq}, ScaffCC \cite{JavadiAbhari2015}, and Project Q~\cite{Steiger_2018}. 
+%None of the optimization or mapping code in these compilers is formally verified.
+In addition, many quantum programming languages have been developed in recent years. 
+Many of these languages (e.g. Quil~\cite{quilc}, OpenQASM ~\cite{Cross2017,10.1145/3505636}, \sqir~\cite{VOQC}) describe low-level circuit programs.
+Higher-level languages may provide library functions for performing common oracle operations (e.g., Q\# \cite{qsharp}, Scaffold~\cite{scaffold,scaffCCnew}) or support compiling from classical programs to quantum circuits (e.g., Quipper~\cite{10.1145/2491956.2462177}), but still leave some important details 
+%\myra{what is uncomputation of ancilla qubits?} \liyi{modified}
+(like deallocating extra intermediate qubits) to the programmer.
+There has been some work on type systems to enforce that deallocation happens correctly (e.g., Silq~\cite{sliqlanguage}) and on automated insertion of deallocation circuits (e.g., Quipper~\cite{10.1145/2491956.2462177}, Unqomp~\cite{unqomp}), but while these approaches provide useful automation, they may also lead to inefficiencies in compiled circuits.
+
+\ignore{
+Previously, formal verification has been applied to parts of the quantum compiler stack, but has not supported general quantum programs.
+Amy \emph{et al.}~\cite{reverC}, and Rand \emph{et al.} \cite{Rand2018,Rand2017} developed certified compilers from source Boolean expressions to reversible circuits. 
+% The problem of optimization verification has also been considered in the context of the ZX-calculus~\cite{Coecke2011}, which is characterized by a small set of rewrite rules that allow translation of a diagram to any other diagram representing the same computation~\cite{Jeandel2018}. 
+Fagan and Duncan \cite{Fagan2018} verified an optimizer for ZX diagrams representing Clifford circuits (which use the non-universal gate set $\{{CX}, H, S\}$). 
+Tao \emph{et al.} \cite{Tao2022} developed Giallar, a verification toolkit used to verify transformations in the Qiskit compiler. 
+
+This research on compilers contains some degree of optimization, and nearly all emphasize satisfying architectural requirements, like mapping to a particular gate set or qubit topology. Recent work has looked at verified optimization of quantum circuits (e.g., \voqc~\cite{VOQC}, CertiQ~\cite{Shi2019}), but these works focus on optimizations towards reducing gate counts assuming gates have formal semantics rather than optimizing towards what happens in different machines.
+Additionally, all the above languages describe operations regarding assembly gate structures instead of providing high-level algorithm specifications or program abstractions. \qafny \cite{li2024qafny} represents the first step in providing high-level program abstractions for quantum gate operations. 
+%Compared to these tools, \name supports both a higher-level classical source language (\vqimp) and a more interesting quantum target language (\vqir).
+}
+
+\noindent\textbf{\textit{Quantum Software Testing and Validation.}}
+%
+There have been many approaches developed for validating quantum programs \cite{morphq_bugs,fuzz4all,10.1109/ASE51524.2021.9678798,fortunato,long:24,QDiff} including the use differential ~\cite{QDiff} and metamorphic testing ~\cite{10.1109/ICSE48619.2023.00202}, as well as mutation testing ~\cite{fortunato} and fuzzing ~\cite{fuzz4all}. Some key challenges exist for testing quantum programs. First, their input space explodes due to superposition. Second, their results are probabilistic (meaning we need to use statistical measures and/or other approaches to evaluate results).  Last, the expected result may be difficult or even impossible to determine. To date, the testing approaches have focused on validating small circuit subroutines (in the sense of having limited input qubit size) rather than testing comprehensive quantum programs, and they are all limited to performing tests in Qiskit, which might not capture all of the machine limitations.
+%To perform gate-level equivalence checking, all the quantum circuit compilers and optimizers (\voqc, CertiQ, Quartz, ScaffCC, etc) contain sub-components for the tasks.
+
+\noindent\textbf{\textit{Methodologies Possibly Used for Validating Quantum Programs.}}
+%
+SymQV \cite{10.1007/978-3-031-27481-7_12} proposed a method of encoding quantum states and gates as SMT-solvable predicates to perform automated verification.
+Chen \emph{et al.} \cite{10.1145/3591270} and Abdulla \emph{et al.} \cite{abdulla2024verifyingquantumcircuitslevelsynchronized} used tree automata to symbolize quantum gates, instead of quantum states, and utilized tree automata to construct a tree structure for easing automated verification. These works can handle some large programs, but these programs have simple program structures, such as QFT.
+Mei \emph{et al.} \cite{10.1007/978-3-031-65633-0_25} performed quantum stabilizer simulation based on the Gottesman–Knill theorem, which is a small subset of quantum programs and mainly used for error correction programs. Quasimodo \cite{10.1007/978-3-031-37709-9_11} is another symbolic execution based on a BDD-like structure to symbolize gates rather than states; their results are similar to the tree automata works \cite{abdulla2024verifyingquantumcircuitslevelsynchronized,10.1145/3591270}.
+\qafny \cite{li2024} transformed quantum program verification to Dafny for automated verification.
+These works tried to transform states and gates to perform automated verification, different from QSV, which tries to perform program testing and validation. The methodologies are also different from QSV where they try to symbolize quantum gates and states, while QSV only inserts special treatments in the standard quantum state representations. As a result, QSV can deal with large programs with comprehensive program structures.
+
+\noindent\textbf{\textit{Verified Quantum Compilers.}}
+%
+%Recent work on formally verifying quantum programs includes \qwire~\cite{RandThesis}, \sqir~\cite{PQPC}, \qbricks~\cite{qbricks}, and \qafny \cite{li2024}. These tools have been used to verify a range of quantum algorithms, from Grover's search to quantum phase estimation. The program verification in these systems requires mannual labor.
+%
+%Like these tools, properties of \pqasm programs are expressed in a proof assistant.
+%But, unlike these tools, we focus on a quantum sub-language that, while not able to express any quantum program, is automatically and efficiently testable for certain properties, such as correctness properties.
+%This allows us to reuse existing infrastructure (like QuickChick~\cite{quickchick}) for testing Rocq properties.
+% We design \vqir with both efficiency and verification in mind:  on one hand, \vqir allows users to build more efficient quantum circuit constructions by leveraging native quantum operations such as Hadamard and quantum Fourier transformation; on the other hand, 
+% we identify a class of such circuit constructions whose semantics can be succinctly expressed and efficiently simulated, the specific form of which is enforced by a type system on \vqir. 
+% The latter eases the verification of the compilation and enables
+% random testing, for any well-formed \vqir program.
+Recent work has looked at verified optimization of quantum circuits (e.g., \voqc~\cite{VOQC}, CertiQ~\cite{Shi2019}), but the problem of verified \emph{compilation} from high-level languages to quantum circuits has received less attention.
+The only examples of verified compilers for quantum circuits are ReVerC~\cite{reverC} and ReQWIRE~\cite{Rand2018ReQWIRERA}.
+Both of these tools support verified translation from a low-level Boolean expression language to circuits consisting of \texttt{X}, \texttt{CNOT}, and \texttt{CCNOT} gates.
+%Compared to these tools, \pqasm supports the compilation of a generalized quantum state preparation program to low-level quantum circuits.
+VQO \cite{oracleoopsla} is a certified compilation framework for verifying and compiling quantum arithmetic operations.
+QSV utilizes VOQC \cite{VOQC} and VQO \cite{oracleoopsla} to compile \pqasm programs to quantum circuits.
+
+\ignore{
+\noindent\textbf{\textit{Oracles in Quantum Languages.}}
+%
+Many works provided library functions for performing common oracle operations (e.g., Q\# \cite{qsharp}, Scaffold~\cite{scaffold,scaffCCnew}) or support compiling from classical programs to quantum circuits (e.g., Quipper~\cite{Green2013}), but still leave some important details (like uncomputation of ancilla qubits) to the programmer.
+%
+\name \cite{oracleoopsla} is similar to Quipper but provides verification for many oracle operations based on different quantum techniques, such as QFT-based arithmetic operations. 
+The key difference between QSV and any of the frameworks is that quantum arithemtic operations provide the ability to write solely quantum arithmetic operations,
+such as the comparator in \Cref{fig:circuits} and the modular multiplication operations in \Cref{sec:modmult},
+while QSV provides the ability to define state preparation programs as well as quickly validate them.
+}
+
+% VARIOUS OLD TEXT:
+
+% Quipper's approach is efficacious, but it can be inefficient and risks
+% bugs. It compiles to a circuit whose gates do not leverage a quantum
+% computer's specific capabilities. For example, addition between
+% integers compiles to a classical ripple-carry adder rather than one
+% based on the \emph{quantum fourier transform} (QFT), which can be more
+% space-efficient. Quipper's compilation strategy also blows up the use
+% of ancillae. For example, implementing cosine as a Haskell function
+% and then building a Quipper circuit from it uses $n^2$ ancilla qubits
+% for an $n$ qubit-encoded number, and usage increases linearly with the
+% number of steps of the Taylor expansion. Of course, programmers are
+% not obligated to use the above recipe for constructing oracles---they
+% can do it by hand for greater efficiency---but this risks
+% mistakes. While writing this paper we found a bug in Quipper's adder:
+% When adding numbers of two different precisions, the lower-precision
+% number is shifted incorrectly.\footnote{The \texttt{k} on the last line of
+%   \texttt{qdouble\_align} should be \texttt{h}; \url{https://www.mathstat.dal.ca/~selinger/quipper/doc/src/Quipper/Algorithms/QLS/QDouble.html\#line-413}}
+
+% \item Quipper~\cite{10.1145/2491956.2462177} -- see section 4.6. It
+%   uses Template Haskell to take a Haskell function $f$ of type
+%   \emph{list of bool} $\rightarrow$ \emph{list of bool} (or just a
+%   single \emph{bool}), and converts it to $U_f$ for a fixed number of
+%   qubits. A subsequent step ``uncomputes'' any ancillae that are no
+%   longer needed. Note that Quipper has implemented \texttt{sin},
+%   \texttt{cos}, etc. But: This is low-level, since the programmer must
+%   manage lists of (physical) qubits and ancillae. No
+%   verification. Look at current code and see what it can do now?
+
+% Quipper \cite{Green2013} is a Haskell-like functional quantum language. Many quantum oracles have been defined in Quipper. Users are able to generate quantum circuits by using the Quipper compiler. We have mentioned several Quipper limitations in Sec.~\ref{sec:evaluation}. The major limitations are two. First, the circuits generated from Quipper oracles are not effective in terms of qubits and gates, and most Quipper oracle definitions are not verified. Quipper has a new development of compiling the language to QPMC \cite{Anticoli2017}, which is a model checker that is capable of verifying algorithms defined in Quipper. However, the oracles defined in Quipper are largely not verified. 
+
+% \myparagraph{Programming Experience}
+% %
+% \sourcelang provides programmability as well as performance
+% benefits. It is a higher-level language based on C, which makes
+% writing oracles easier than in circuit construction languages such as
+% in SQIR, Cirq, Qiskit, and OpenQASM \cite{cross2021openqasm}. Quipper
+% supports writing oracles using circuit combinators, too, but it also
+% permits writing an oracle as a Haskell function directly, leveraging
+% Template Haskell \cite{Green2013} to compile that function to a
+% (Toffoli-based) circuit. This puts it on a similar level of usability
+% as \sourcelang. One benefit of \name is its support for randomized
+% testing, allowing programmers to troubleshoot their applications and
+% debug their programs more quickly, especially when quantum techniques
+% like QFT are used.  
+% \ignore{
+% The following is a real-life example.  Before we
+% had \name, we were writing a modular exponentiation circuit in
+% \sqir. Initially, the circuit's performance was encouraging, but while
+% spending weeks trying to prove it correct, we discovered and fixed
+% various bugs. By the time we finished, performance had degraded
+% substantially. With a few hours' worth of random testing using \name,
+% we could have found the flaws and fixed them in a way that preserved
+% performance and maintained confidence in correctness \emph{before}
+% attempting any time-consuming verification.
+% } 
+% \liyi{I now think we might not need that example.
+%  Since the whole paper is talking about the benefits of random testing. so it should be clear enough at this point.
+% So we just cut the example.}
+% \mwh{I don't understand
+%   this anecdote. This example doesn't have to do with OQIMP; it's
+%   about writing in a circuit language (i.e., prior to \name). If you
+%   wrote in OQIMP you could just simulate the circuit directly to test
+%   it. So the random testing benefit is really just about OQASM
+%   circuits. So what does that mean for overall claims about usability
+%   benefits? Also, Quipper provides no verification, and this example
+%   is about time taken to verify.}
+% \mwh{Idea: move this paragraph to the related work section}
+
+% ReVerC \cite{reverC} is a language for writing reversible Boolean expressions by using \texttt{X}, \texttt{CNOT}, and \texttt{CCX} gates, which is similar to RKQC. It has a compiler to compile a relatively high-level reversible language (Revs) \cite{parent2015reversible} to circuits, and it is verified. The limitation of ReverC is that the language it supports is a relatively low-level Boolean expression language. Even though the compiler is verified and contains several examples of defining arithmetic operations, the operations are not verified yet. Additionally, ReverC is a reversible language and it does not provide a connection between quantum algorithms and quantum arithmetic oracles, as we did in Sec.~\ref{sec:grover-search}. 
+
+% % Some prior work has also applied formal methods to compilation of
+% % oracles. ReVerC is a formally verified compiler for reversible
+% % circuits, but the input language is only boolean expressions, not
+% % integers or decimal numbers, and compilation is only to classical
+% % gates. ReQWIRE has similar limitations.
+
+% \myparagraph{Entanglement in Quantum Languages}
+
+% Quantum entanglement is an important feature of quantum programs, and also a useful tool for reasoning about quantum programs \cite{quantumseparation,Yuan2022}.
+% Unfortunately, entanglement detection is at least an NP-hard problem \cite{entanglementdetection}.
+% By design, an \oqasm program can never introduce entanglement.

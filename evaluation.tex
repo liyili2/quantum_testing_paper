@@ -1,0 +1,570 @@
+\section{Evaluation: Applicativity via Case Studies}\label{sec:evaluation}
+
+Here, we present an experimental evaluation of QSV on many programs to judge how QSV can be used to effectively build and validate useful quantum state preparation programs that have different patterns.
+We compare QSV's efficiency and scalability with other frameworks in \Cref{sec:eval}.
+
+%Here, we present an experimental evaluation of QSV on many programs to answer the questions:
+\ignore{
+\begin{itemize}
+\item Q1: Applicability: Can QSV be used to build and validate useful quantum state preparation programs?
+
+\end{itemize}
+}
+\ignore{
+\begin{itemize}
+% \item We state what is the evaluation metrics. How are we going to evaluate, and what questions the evaluation is trying to do?
+% \item We aim to compare \pqasm’s capabilities to capabilities of existing quantum circuit validators.
+
+\item We divide the state preparation cases into two groups and then develop validation strategies for different sets.
+
+\item Showing the evaluation tables, we might need to find another framework for running the examples. Compared with Qiskit? In addition, it is not too impressive to only show the qubits; we might need to show the total qubits, and then we might need to show the number of gates.
+
+\item We also need to have a way to demo how we can find bugs, like we show a bug program and show that our system can find the bugs.
+\end{itemize}
+
+\liyi{do things above, and maybe others.}
+}
+
+\myparagraph{Implementation} We implement QSV in Roqc and utilize QuickChick to create a quantum program validation framework.
+We also provide a \pqasm circuit compiler to translate \pqasm programs to OpenQASM quantum circuits, via SQIR.
+
+\myparagraph{Experimental Setup} We perform our evaluation of QuickChick tests and Qiskit on an Ubuntu computer, which has 8-core 13-gen i9 Intel processors and 16 GiB DDR5 memory.
+
+%\liyi{maybe can be removed}
+%\myparagraph{Statistics.} Our Roqc development is over 1,000 lines of code, ... A detailed view of the code statistics is
+%given in the following table.
+
+%\subsection{Q1: Applicaitivity via Case Studies}\label{sec:arith-oqasm}
+
+\begin{figure}[h]
+{\footnotesize
+\begin{center}
+\begin{tabular}{| l | c | c | c | c |}
+\hline
+ State Preparation Program  & 8B Gate \#  & 8B Qubit \# & 60B Gate \#  & 60B Qubit \# \\
+ \hline
+$n$ basis-ket & 766 & 9 & 5,732 & 61\\
+Modular Exponentiation & 277K & 27 & 3.3M & 183\\
+Amplitude Amplification & 65 & 9 & 481 & 61 \\
+Hamming Weight & 9,088 & 16 & 170K & 120 \\
+Distinct Element & 16,036  & 49 & 120K &  361 \\
+\hline                           
+\end{tabular}
+\end{center}
+}
+\caption{Program statistics for single registers with 8 and 60 Qubits (8B/60B); $n=5$ for Distinct element. ‘K’ means thousand, ‘M’ means million’.}
+\label{fig:qiskit-data}
+\end{figure}
+
+We show several case studies here to demonstrate the power of QSV for constructing and validating state preparation programs.
+We classify \emph{two different program patterns} below and examine their validation strategies.
+We list the qubit and gate counts for the case study programs in \Cref{fig:qiskit-data}.
+The data are collected by compiling our programs to SQIR based on the elementary gateset $\{\cn{X}, \cn{H}, \cn{CX}, \cn{Rz}\}$.
+To describe the programs, we define the following repeat operator for repeating a process $n$ times.
+Here, $P$ is a function that takes a natural number and outputs a quantum program.
+
+{\small
+\begin{center}
+$
+Re(P,n)\triangleq\sifb{n=0}{\sskip}{\iseq{Re(P,n-1)}{P(n-1)}}
+$
+\end{center}
+}
+
+\subsubsection{Quantum Loop Programs.}\label{sec:quantumloop}
+We first examine the class of programs only involving quantum unitary gates without measurement.
+Such programs typically contain quantum loops, a repetition of subroutines formed via unitary gates.
+These programs usually act as a large part of some quantum algorithms.
+For example, the modular exponentiation state preparation program is the major part of Shor's algorithm, while the amplitude amplification state preparation program is the major part of an upgraded amplitude estimation algorithm \cite{10.1007/s11128-019-2565-2}.
+
+\begin{figure}[t]
+\vspace*{0.5em}
+{\hspace*{-1em}
+\begin{minipage}[b]{0.45\textwidth}
+  {\tiny
+  $
+  \Qcircuit @C=0.5em @R=0.5em {
+    &                     & & \gate{H} & \ctrl{6} & \qw & \qw & \qw & \qw & \qw & \qw & \\
+    & \push{\overline{q_1}:\ket{0}\;\,} & & \gate{H} & \qw & \ctrl{5} & \qw & \qw & \qw & \qw & \qw &  \\
+    &                     & &  & & & &  & & & & \\
+    &                     & & \dots & & & & \dots & & & & \\
+    &                     & & & & & & & & & & \\
+    &                     & & \gate{H} & \qw & \qw & \qw & \qw & \qw & \ctrl{1} & \qw & \push{\;\;\varphi_1}\\
+    &                     & & \qw & \multigate{4}{\texttt{$(c^{2^0} * \overline{q_2}) \,\cn{\%}\, n$}} & \multigate{4}{\texttt{$(c^{2^1} *  \overline{q_2}) \,\cn{\%}\, n$}} & \qw & \qw & \qw & \multigate{4}{\texttt{$(c^{2^{m-1}} *  \overline{q_2}) \,\cn{\%}\, n$}} & \qw & \\
+    & \push{\overline{q_2}:\ket{1} \;\,} & & \qw & \ghost{\texttt{$(c^{2^0} * \overline{q_2}) \,\cn{\%}\, n$}} & \ghost{\texttt{$(c^{2^1} * \overline{q_2}) \,\cn{\%}\, n$}} & \qw & \qw & \qw & \ghost{\texttt{$(c^{2^{m-1}} * \overline{q_2}) \,\cn{\%}\, n$}} & \qw &  \\
+    & & & \dots & & & & \dots & & & & \\
+    & & & & & & & & & & & \\
+    & & & \qw & \ghost{\texttt{$(c^{2^0} * \overline{q_2}) \,\cn{\%}\, n$}} & \ghost{\texttt{$(c^{2^1} * \overline{q_2}) \,\cn{\%}\, n$}} & \qw & \qw & \qw & \ghost{\texttt{$(c^{2^{m-1}} * \overline{q_2}) \,\cn{\%}\, n$}} & \qw
+    \gategroup{1}{3}{5}{3}{1em}{\{}
+    \gategroup{7}{3}{11}{3}{1em}{\{}
+    \gategroup{1}{11}{11}{11}{1em}{\}}
+    }
+$
+    }
+    \caption{Modular Exponentiation Circuits}
+\label{fig:mod-mult}
+\end{minipage}
+\hfill
+\begin{minipage}[b]{0.5\textwidth}
+{\tiny
+$\qquad
+  \Qcircuit @C=0.5em @R=0.5em {
+    &                     & & \gate{H} & \ctrl{6} & \qw & \qw & \qw & \qw & \qw & \qw & \qw & \qw & \qw &  \\
+    &                     & & \gate{H} & \qw & \ctrl{5} & \qw & \qw & \qw & \qw & \qw & \qw & \qw & \qw & \\
+    & \push{\overline{q}:\ket{0}\;} & &  & & & &  & & & & & & & \\
+    &                     & & \dots & & & & \dots & & &  & & & & \push{\;\;\varphi_2}\\
+    &                     & & & & & & & & & & & & & \\
+    &                     & & \gate{H} & \qw & \qw & \qw & \qw & \qw & \qw & \qw & \qw & \ctrl{1} & \qw & \\
+    & \push{q':\ket{0}\;} & & \gate{Ry(\frac{r}{2^{n}})}  & \gate{Ry(\frac{r}{2^{n-1}})}      & \gate{Ry(\frac{r}{2^{n-2}})}  & \qw & & \dots  & & & \qw  & \gate{Ry(\frac{r}{2^{0}})} & \qw 
+    \gategroup{1}{3}{6}{3}{1em}{\{}
+    \gategroup{1}{14}{7}{14}{1em}{\}}
+    }
+$
+}
+\caption{Amplitude amplification state preparation.}
+\label{fig:aacircuit}
+\end{minipage}
+}
+\end{figure}
+
+\myparagraph{Modular Exponentiation State Preparation}\label{sec:modmult}
+%
+In Shor's algorithm \cite{shors}, we prepare the the superposition state of modular exponentiation, as $\varphi_1 = \frac{1}{\sqrt{2^m}} \sum_j^{2^m}\aket{j}{m}\aket{\modexp{c}{j}{n}}{m}$, based on two natural numbers $c$ and $n$ with $\cn{gcd}(c,n)=1$.
+
+{\footnotesize
+\begin{center}
+$
+\begin{array}{l@{\;}c@{\;}l}
+Q(\overline{q_1},\overline{q_2})(k) &\triangleq& \ictrl{(\overline{q_1}[k])}{\modmult{c^{2^k}}{\overline{q_2}}{n}}
+\\[0.2em]
+P(m) &\triangleq& \iseq{\inew{\overline{q_1}}}{\iseq{\iseq{\inew{\overline{q_2}}}{\ihad{\overline{q_1}}}}{{Re(Q(\overline{q_1},\overline{q_2}),m)}}}
+\end{array}
+$
+\end{center}
+}
+
+We show the program to prepare the modular exponentiation state below, with the circuit diagram in \Cref{fig:mod-mult}.
+The program starts with two new length $m$ qubit arrays $\overline{q_1}$ and $\overline{q_2}$, and turns $\overline{q_1}$ to a uniform superposition by applying $m$ Hadamard gates. We then repeat $m$ times a controlled modular multiplication ($\ictrl{(\overline{q_1}[k])}{\modmult{c^{2^k}}{\overline{q_2}}{n}}$) application, controlling on the qubit $\overline{q_1}[k]$ and applying modular multiplications to the qubit array $\overline{q_2}$.
+
+As we mentioned in \Cref{sec:rand-testing}, to conduct the validation of the program correctness, we first cut off the first three operations ($\texttt{new}$ and $\cn{H}$ operations) in $P(m)$, resulting in a program piece $Re(Q(\overline{q_1},\overline{q_2}),m)$, where $Q(\overline{q_1},\overline{q_2})$ is a function taking in a number $k$ and outputting a program $\ictrl{(\overline{q_1}[k])}{\modmult{c^{2^k}}{\overline{q_2}}{n}}$.
+The validation correctness specification is also transformed as the one without having the superposition state description below.
+
+{\small
+\begin{center}
+$
+\forall j \in [0,2^m)\,.\,\aket{j}{m}\aket{0}{m}\to\aket{j}{m}\aket{\modexp{c}{j}{n}}{m}
+$
+\end{center}
+}
+
+Validating the $m$-step loop program $Re(Q(\overline{q_1},\overline{q_2}),m)$ essentially executes the $Q$ program $m$ times.
+In executing the $k$-th loop step, we have the following loop invariant.
+
+{\small
+\begin{center}
+$
+\aket{j}{k}\aket{\modexp{c}{j}{n}}{m}\to\aket{j}{k\splus 1}\aket{\modexp{c}{j}{n}}{m}
+$
+\end{center}
+}
+
+In the pre-state, $\aket{j}{k}$ is a length $k$ bitstring while the post-state has $\aket{j}{k\splus 1}$ being length $k\splus 1$.
+To understand the behavior, notice that we have the most significant bit on the right. 
+A $k\splus 1$ length bitstring $\aket{j}{k\splus 1}$ can be expressed as a composition over a length $k$ bitstring as $\aket{j}{k}\aket{0}{1}$ or $\aket{j}{k}\aket{1}{1}$, with the most sigificant bit being $0$ or $1$. 
+For the former case, applying the controlled modular multiplication results in $\aket{j}{k}\aket{0}{1}\aket{\modexp{c}{j}{n}}{m}$,
+i.e., the $\overline{q_2}$ part of the bitstring remains the same.
+For the latter case ($\aket{j}{k}\aket{1}{1}$), the controlled modular multipliation results in the state $\aket{j}{k}\aket{1}{1}\aket{\modmult{c^{2^{k}}}{\modexp{c}{j}{n}}{n}}{m}=\aket{j}{k}\aket{1}{1}\aket{\modexp{c}{j+2^k}{n}}{m}$.
+Both cases can be rewritten to the post-state in the loop invariant above.
+
+To validate the program piece $Re(Q(\overline{q_1},\overline{q_2}),m)$ against the above specification,
+we are given a length $2m$ bitstring with $\overline{q_1}$ and $\overline{q_2}$ both being length $m$,
+and view $\overline{q_1}$ as a length $m$ array of random variables, and prepare a initial state $\aket{\overline{q_1}[0],...,\overline{q_1}[m\sminus 1]}{m}\aket{0}{m}$, with random generation of length $m$ binary bitstrings, as test instances, for the variables $\overline{q_1}[0],...,\overline{q_1}[m\sminus 1]$.
+We then use the mechanism in \Cref{sec:rand-testing} to validate the program piece, performing a sort of unit testing.
+As we mentioned in \Cref{sec:intro}, after we test enough samples of different input basis-ket states with different values for random variables, we have a high assurance that the modular exponentiation state preparation program correctly prepares a superposition state.
+
+Note that the program is a deterministic quantum circuit program, so the probability of preparing the superposition state is $100\%$.  
+
+\myparagraph{Amplitude Amplification State Preparation Through Ry Gates}\label{sec:aary}
+%
+In the amplitude amplification algorithm, one needs to prepare a special superposition state \cite{10.1007/s11128-019-2565-2}, with the circuits shown in \Cref{fig:aacircuit}.
+The prepared state is $\varphi_2=\frac{1}{\sqrt{2^n}}\sum_j^{2^n}\aket{j}{n}\qket{\frac{(2j+1)r}{2^n}}$.
+Then, the amplitude amplification algorithm utilizes the last qubits ($\qket{\frac{(2j+1)r}{2^n}}$) to amplify the amplitudes of the basis-kets having a particular property with respect to some $j$. The $r$ value is the upper limit of the possible amplitude value, i.e., we want to carefully select $r$ to ensure $\frac{(2j+1)r}{2^n}\in[0,\frac{\pi}{2})$.
+
+
+{\footnotesize
+\begin{center}
+$
+\begin{array}{l@{\;}c@{\;}l}
+Q(\overline{q},q')(j) &\triangleq& \ictrl{(\overline{q}[j])}{\iry{\frac{r}{2^{n-j}}}{q'}}
+\\[0.2em]
+P(n) &\triangleq& \iseq{\inew{\overline{q}}}{\iseq{\iseq{\inew{q'}}{\iseq{\ihad{\overline{q}}}{\iry{\frac{r}{2^n}}{q'}}}}{{Re(Q(\overline{q},q'),n)}}}
+\end{array}
+$
+\end{center}
+}
+
+We implement the program $P$ in \pqasm with the input of a qubit array $\overline{q}$ and a single qubit $q'$.
+We then apply Hadamard operations on $\overline{q}$ and a $Y$-axis rotation on $q'$.
+Eventually, we a series of controlled $Y$-axis rotation operations --- controlling on the $\overline{q}[j]$ qubit, for $j\in[0,n)$ and applying $\cn{Ry}$ on $q'$;
+each single controlled $Y$ axis roation is handled by the $Q$ process.
+
+Since there is no measurement in the above program, the success rate of preparing the amplitude amplification state is theoretically $100\%$.
+We mainly test the correctness here.
+
+{\small
+\begin{center}
+$
+{\iseq{{{\iry{\frac{r}{2^n}}{q'}}}}{{Re(Q(\overline{q},q'),n)}}}
+\qquad
+\qquad
+\forall j \in [0,2^n)\,.\,\aket{j}{n}\aket{0}{1}\to\aket{j}{n}\qket{\frac{(2j+1)r}{2^n}}
+$
+\end{center}
+}
+
+In doing so, we can adapt the same strategy in the modular exponentiation state preparation, where we assume the correctness of the portion, $\iseq{\inew{\overline{q}}}{\iseq{\inew{q'}}{\ihad{\overline{q}}}}$, can be easily judged, so we should mainly focus on validating the portion shown above on the left.
+The correctness specification is described above on the right.
+In validating this portion, we notice that the qubit array $\overline{q}$ is in $\thadt$ type, and we generate random variables, with binary values $0$ or $1$, for every qubit in the array. Through the validation procedure in validating the modular exponentiation program above, we can assure that the result of the program produces the superposition state $\varphi_2$.
+
+\subsubsection{Repeat-until-success Programs.}\label{sec:repeat-success}
+
+We then examine the class of repeat-until-success programs, using the strategy exactly demonstrated in \Cref{sec:rand-testing}.
+We show the Hamming weight and the distinct element state preparation program validation below.
+
+\begin{figure}[t]
+{\scriptsize
+$\begin{array}{c}
+  \Qcircuit @C=0.5em @R=0.5em {
+    &                     & & \gate{H} & \ctrl{6} & \qw & \qw & \qw & \qw & \qw & \qw & \qw & \\
+    &                     & & \gate{H} & \qw & \ctrl{5} & \qw & \qw & \qw & \qw & \qw &  \qw & \\
+    & \push{\overline{q_1}:\ket{0}\quad} & &  & & & &  & & & & & \push{\quad\varphi_3}\\
+    &                     & & \dots & & & & \dots & & & & & \\
+    &                     & & & & & & & & & & & \\
+    &                     & & \gate{H} & \qw & \qw & \qw & \qw & \qw & \ctrl{1} & \qw & \qw & \\
+    &                     & & \qw & \multigate{4}{\texttt{$\iadd{\overline{q_2}}{1}$}} & \multigate{4}{\texttt{$\iadd{\overline{q_2}}{1}$}} & \qw & \qw & \qw & \multigate{4}{\texttt{$\iadd{\overline{q_2}}{1}$}} & \qw & \meter & \\
+    & \push{\overline{q_2}:\ket{0}\quad } & & \qw & \ghost{\texttt{$\iadd{\overline{q_2}}{1}$}} & \ghost{\texttt{$\iadd{\overline{q_2}}{1}$}} & \qw & \qw & \qw & \ghost{\texttt{$\iadd{\overline{q_2}}{1}$}} & \qw &  \meter & \push{\quad x}\\
+    &                     & & \dots &                                     &                                     &     & \dots &     &                                         & & \dots & \\
+    &                     & &       &                                     &                                     &     &       &     &                                         & & & \\
+    &                     & & \qw   & \ghost{\texttt{$\iadd{\overline{q_2}}{1}$}} & \ghost{\texttt{$\iadd{\overline{q_2}}{1}$}} & \qw & \qw   & \qw & \ghost{\texttt{$\iadd{\overline{q_2}}{1}$}} & \qw & \meter 
+    \gategroup{1}{3}{6}{3}{1em}{\{}
+    \gategroup{7}{3}{11}{3}{1em}{\{}
+    \gategroup{1}{12}{6}{12}{1em}{\}}
+    }
+    \end{array}
+$
+}
+\caption{One step Hamming weight state preparation (repeat-until-success).}
+\label{fig:hammingcircuit}
+\end{figure}
+
+
+\myparagraph{Hamming Weights State Preparation}\label{sec:hammingweight}
+%
+The quantum clique finding algorithm \cite{10.5555/2011430.2011431} requires the state preparation of a $k$-th Hamming weight superposition state,
+i.e., we prepare a state $\varphi_3=\frac{1}{\sqrt{N}}\sum_j^N \aket{c_j}{n}$, with the number of $1$'s bit in $c_j$ is $k$.
+Assuming that $\varphi_3$ is a length $n$ qubit state, $\varphi_3$ has $N$ different basis-kets, with $N=\begin{pmatrix}
+n\\
+k
+\end{pmatrix}$.
+
+{\footnotesize
+\begin{center}
+$
+\begin{array}{l@{\;}c@{\;}l}
+Q(\overline{q_1},\overline{q_2})(j) &\triangleq& \ictrl{(\overline{q_1}[j])}{\cn{add}(\overline{q_2},1)}
+\\[0.2em]
+P(n,k) &\triangleq& \iseq{\inew{\overline{q_1}}}{\iseq{\iseq{\inew{\overline{q_2}}}{\ihad{\overline{q_1}}}}{\iseq{Re(Q(\overline{q_1},\overline{q_2}),n)}{\smea{x}{\overline{q_2}}{\sifb{x=k}{\sskip}{P(n,k)}}}}}
+\end{array}
+$
+\end{center}
+}
+
+The above is a repeat-until-success program of the Hamming weight program above, with the circuit in \Cref{fig:hammingcircuit} showing a single quantum step in $P(n,k)$.
+The program starts with two new length $n$ qubit arrays $\overline{q_1}$ and $\overline{q_2}$, and turns $\overline{q_1}$ to a uniform superposition by applying $n$ Hadamard gates. We then repeat $n$ times of a controlled addition ($\ictrl{(\overline{q_1}[j])}{\cn{add}(\overline{q_2},1)}$) applications --- controlling on the qubit $\overline{q_1}[j]$ and applying additions to the qubit array $\overline{q_2}$.
+The controlled additions count the number of $1$'s bits in $\overline{q_1}$ and store the result in $\overline{q_2}$.
+If the measurement on the qubit array $\overline{q_2}$ results in $k$ (assigning to $x$), it means that the $\varphi_2$ state of the qubit array $\overline{q_1}$ is a superposition of basis-ket states with the vector having $k$ bits of $1$.
+Otherwise, we repeat the process $P$ with two new qubit arrays $\overline{q_1}$ and $\overline{q_2}$ until the measurement result $k$ appears.
+%The repeat-until-success program guarantees that a $k$-th Hamming weight superposition state is prepared correctly.
+Note that $Q(\overline{q_1},\overline{q_2})$ in $Re$ is a function taking in a natural number argument $j$ and then performing a controlled addition.
+
+{\small
+\begin{center}
+$
+{\iseq{Re(Q(\overline{q_1},\overline{q_2}),n)}{\smea{x}{\overline{q_2}}{\sifb{x=k}{\sskip}{\sskip}}}}
+$
+\end{center}
+}
+
+{\small
+\begin{center}
+$
+\forall j \in [0,2^n)\,.\,\aket{j}{n}\aket{0}{n}\to\aket{j}{n}\wedge \cn{sum}(\cn{n2b}(j))=k
+$
+\end{center}
+}
+
+To validate the correctness of the Hamming weight program, we shrink the program by removing the \cn{new} and \cn{H} operations.
+The program piece and the transformed correctness specification are listed above.
+We then utilize the procedure in \Cref{sec:rand-testing} to perform the validation.
+Here, we assume that the $\thadt$ typed qubits $\overline{q_1}$ are already prepared, and we randomly generate a length $n$ bitstring for the random variables $\overline{q_1}[0],...,\overline{q_1}[n\sminus 1]$.
+Each random variable, possibly being $0$ or $1$, represents the basis-bit of a single qubit superposition.
+We set up the PBT to randomly sample values for the random variables and exclusively test the correctness of the transition behavior of basis-ket states.
+The key correctness property ($\cn{sum}(\cn{n2b}(j))=k$) for the Hamming weight state is that each output basis-ket of $\overline{q_1}$ should have exactly $k$ bits of $1$.
+
+The judgment of the efficiency of the program in successfully preparing the superposition state can easily be done by counting the number of basis-kets in a superposition quantum state.
+Notice that every superposition state prepared by a simple Hadamard operation produces a uniform superposition, meaning that the likelihood of measuring out any basis-ket vector is equally likely.
+Thus, we only need to compare the ratio between the number of basis-kets after the Hadamard operations are applied and the basis-ket number in $\overline{q_1}$ after the measurement is applied. The former contains $2^n$ different basis-kets for $n$ Hadamard operations, and the latter has $\begin{pmatrix}
+n\\
+k
+\end{pmatrix}$ basis-kets in a $k$-th Hamming weight state.
+So, the success rate of a single try in the program is $\begin{pmatrix}
+n\\
+k
+\end{pmatrix} / 2^n$.
+
+
+\begin{figure}[t]
+\vspace*{-0.5em}
+{\hspace*{-3em}
+\begin{minipage}[t]{0.45\textwidth}
+\subcaption{Subroutine $Q(j,k)$}
+\label{fig:subroutine}
+\vspace*{0.3em}
+{\tiny
+$\begin{array}{l}
+\;\; Q(j,k) \;\;= \\[1em]
+  \Qcircuit @C=0.5em @R=0.5em {
+    & \push{\overline{q_{j+2}}}  & &  \multigate{2}{\texttt{$\qbool{\overline{q_{j+2}}}{=}{\overline{q_{k+2}}}{q_0}$}} & \qw &  \multigate{2}{\texttt{$\qbool{\overline{q_{j+2}}}{=}{\overline{q_{k+2}}}{q_0}$}} & \qw & \\
+    &  \push{\overline{q_{k+2}}} & & \ghost{\texttt{$\qbool{\overline{q_{j+2}}}{=}{\overline{q_{k+2}}}{q_0}$}}         & \qw & \ghost{\texttt{$\qbool{\overline{q_{j+2}}}{=}{\overline{q_{k+2}}}{q_0}$}} & \qw &  \\
+    & \push{q_0}             & & \ghost{\texttt{$\qbool{\overline{q_{j+2}}}{=}{\overline{q_{k+2}}}{q_0}$}}         & \ctrl{1} & \ghost{\texttt{$\qbool{\overline{q_{j+2}}}{=}{\overline{q_{k+2}}}{q_0}$}} & \qw &  \\
+    & \push{\overline{q_1}}  & & \qw                                                                       & \gate{\texttt{$\iadd{\overline{q_1}}{1}$}} & \qw & \qw &  \\
+    }
+    \end{array}
+$
+}
+\end{minipage}
+%
+  \begin{minipage}[t]{0.52\textwidth}
+   \subcaption{Overall One Step Circuit}
+\label{fig:diselems}
+\vspace*{0.3em}
+{\tiny
+$\begin{array}{c}
+  \Qcircuit @C=0.5em @R=0.5em {
+    &\push{\overline{q_2}:\ket{0}}                     & & \gate{H} &  \multigate{7}{\texttt{$Q(2,3)$}} & \qw & \qw & \qw & \multigate{7}{\texttt{$Q(2,n+1)$}} & \multigate{7}{\texttt{$Q(3,4)$}}  & \qw & \qw & \qw     & \multigate{7}{\texttt{$Q(n,n+1)$}} & \qw & \\
+    &\push{\overline{q_3}:\ket{0}} & & \gate{H} & \ghost{\texttt{$Q(2,3)$}} & \qw & \qw & \qw & \ghost{\texttt{$Q(2,n+1)$}} & \ghost{\texttt{$Q(3,4)$}}   & \qw & \qw & \qw     & \ghost{\texttt{$Q(n,n+1)$}} &  \qw & \\
+    &  & &  & & &   & & & & & & & & & \push{\varphi_4}\\
+    &                     & & \dots & & & \dots & & & &  & \dots & & & &\\
+    &                     & & & & & & & & & & & & &\\
+    &\push{\overline{q_{n+1}}:\ket{0}}                     & & \gate{H} & \ghost{\texttt{$Q(2,3)$}} & \qw & \qw & \qw & \ghost{\texttt{$Q(2,n+1)$}} & \ghost{\texttt{$Q(3,4)$}}  & \qw & \qw & \qw     & \ghost{\texttt{$Q(n,n+1)$}} & \qw & \\
+    &\push{q_0:\ket{0}}    & & \qw & \ghost{\texttt{$Q(2,3)$}} & \qw & \qw & \qw & \ghost{\texttt{$Q(2,n+1)$}} & \ghost{\texttt{$Q(3,4)$}}  & \qw & \qw & \qw     & \ghost{\texttt{$Q(n,n+1)$}} & \qw & \\
+    &\push{\overline{q_1}:\ket{0}}  & & \qw & \ghost{\texttt{$Q(2,3)$}} & \qw & \qw & \qw & \ghost{\texttt{$Q(2,n+1)$}} & \ghost{\texttt{$Q(3,4)$}}  & \qw & \qw & \qw     & \ghost{\texttt{$Q(n,n+1)$}} & \meter & \push{x}   
+    %\gategroup{1}{3}{6}{3}{1em}{\{}
+    \gategroup{1}{15}{7}{15}{1em}{\}}
+    }
+    \end{array}
+$
+}
+\end{minipage}
+\vspace*{-0.5em}
+\caption{One step of the distinct element state preparation program.}
+\label{fig:distinctelem}
+}
+\vspace*{-1em}
+\end{figure}
+
+\myparagraph{Distinct Element State Preparation}\label{sec:distinctness}
+%
+Another special superposition state is the one in the element distinctness algorithm.
+Here, we assume that we are given a graph with $n$ different vertices, and the algorithm begins with a superposition of different combinations of vertices, as shown below.
+
+{\small
+\begin{center}
+$
+\varphi_4=\frac{1}{\sqrt{n!}}\sum_{j} \sigma_j(\ket{x_1}\ket{x_2}...\ket{x_n})
+$
+\end{center}
+}
+
+Here, $x_1$, $x_2$, ..., $x_n$ are different vertex keys in the graph, $\sigma_j$ is a permutation of the key list $\ket{x_1}\ket{x_2}...\ket{x_n}$.
+There are $n!$ different kinds of permutations, so the uniform amplitude for each basis-ket is $\frac{1}{\sqrt{n!}}$.
+Essentially, the superposition of different vertex combinations means we are preparing a superposition state containing all the permutations of different vertex keys.
+Such superposition of permutation is widely used in many algorithms, such as the quantum fingerprinting algorithm \cite{Buhrman_2001}.
+
+{\footnotesize
+\begin{center}
+$\hspace*{-0.5em}
+\begin{array}{l@{\;}c@{\;}l}
+Q(k)(j) &\triangleq& \iseq{\qbool{\overline{q_{j+2}}}{=}{\overline{q_{k+2}}}{q_0}}{\iseq{\ictrl{q_0}{(\overline{q_1}+1)}}{\qbool{\overline{q_{j+2}}}{=}{\overline{q_{k+2}}}{q_0}}}
+\\[0.2em]
+R(j)(n) &\triangleq& Re(Q(j),n)
+\\[0.2em]
+H(j) &\triangleq& \ihad{\overline{q_{j+2}}}
+\\[0.2em]
+T(j) &\triangleq& \inew{\overline{q_{j+1}}}
+\\[0.2em]
+P(n) &\triangleq& \iseq{\inew{q_0}}{\iseq{Re(T,n+1)}{\iseq{{Re(H,n)}}{\iseq{Re(R(n-1),n)}{\smea{x}{\overline{q_1}}{\sifb{x=0}{\sskip}{P(n)}}}}}}
+\end{array}
+$
+\end{center}
+}
+
+For simplicity, we only implement the above program to prepare a superposition state of distinct elements, i.e., each basis-ket in the superposition state stores $n$ distinct elements (vertex key), each key having a qubit size $m$. Note that if $n=2^m$, i.e., we have $2^m$ different vertices having keys $u\in[0,2^m)$, then the superposition state represents a superposition of all the permutations.
+We show a repeat-until-success program of preparing the distinct element superposition state above, with the circuit in \Cref{fig:distinctelem} showing a single quantum step in $P(n)$. We first initialize a single qubit $q_0$, and use $T(j)$ to initialize $n+1$ different qubit arrays, $\overline{q_{j+1}}$, with $j\in [0,n+1)$, and we assume that $\overline{q_{j+1}}$ is an $m$ length qubit array.
+We then apply Hadamard operations to all qubit arrays $\overline{q_{j+2}}$, for $j \in [0,n)$.
+Here, $q_0$ and $\overline{q_1}$ are ancillary qubits.
+
+Essentially, we can view $\overline{q_{j+2}}$, for $j \in [0,n)$, as an $n$-length array of qubit arrays.
+The program applies $O(n^2)$ times of $Q$ processes, each of which applies an equivalent check on two elements in the $n$-length array,
+i.e., we compare the basis-ket data in $q_{j+2}$ and $q_{k+2}$ ($j,k\in[0,n)$), if $j+2 \neq k+2$ (same as $j\neq k$), and store the boolean result in $q_0$ bit, where $0$ represents the two basis-ket data are not equal and $1$ means they are equal.
+Then, we also add the result to $\overline{q_1}$ and apply the comparison circuit again to clean up the ancillary qubit $q_0$, meaning that we restore $q_0$'s state to $\ket{0}$. This procedure describes the circuit in \Cref{fig:subroutine}.
+
+After we apply the $Q$ function to any two different elements in the $n$-length array, we observe that $q_0$ is back to $\ket{0}$ state, and $\overline{q_1}$ stores the number of same basis-kets between any two distinct elements in the $n$-length array.
+We then measure $\overline{q_1}$ and see if the measurement result is $0$. If so, a permutation superposition state is prepared because it means that in all the basis-kets in the prepared superposition, there are no two-qubit array elements $\overline{q_k}$ and $\overline{q_l}$ that have equal key.
+If not, we repeat the process, and the repeat-until-success program guarantees the creation of the permutation superposition state.
+
+To validate the correctness, we utilize the procedure in \Cref{sec:rand-testing}. We create the validating program piece by shrinking out the \cn{new} and \cn{H} operations in the original program. The program piece and the transformed specification are listed below.
+
+{\small
+\begin{center}
+$
+\iseq{Re(R(n-1),n)}{\smea{x}{\overline{q_1}}{\sifb{x=0}{\sskip}{\sskip}}}
+$
+\end{center}
+}
+
+{\small
+\begin{center}
+$
+x=0\Rightarrow\forall j,j'\in [0,2^{n * m})\,.\,\aket{0}{1}\aket{0}{n}\aket{j}{n*m}\to \aket{0}{1}\aket{j'}{n*m} \wedge \cn{dis}(j',m)
+$
+\end{center}
+}
+
+In the specification, $j$ and $j'$ represent the values for two arrays of qubit arrays, i.e., $j$ represents the bitstring value for composing basis-ket values of all elements in the qubit array $\overline{q_{l+2}}$, with $l\in[0,n)$. The qubit array $\overline{q_{j+2}}$ has $n*m$ qubits, and we slice the basis-vector for the whole qubit array into $n$ different small segments for the qubit ranges $[l*m,l*(m+1)-1)$, each basis-vector segment representing a vertex key.
+Since we apply Hadamard operations to all of them, it creates a uniform superposition state containing $2^{n * m}$ different basis-vector states.
+In the post-state of the specification, the $q_0$ qubit is still $\ket{0}$.
+For the qubit arrays $\overline{q_{2}},...,\overline{q_{m+2}}$, if the measurement result is $x=0$, we result in a superposition state of distinct elements, i.e., any two elements (each element $l$ is a segment of $[l*m,l*(m+1)-1)$) in the qubit array $\overline{q_{j+2}}$ have distinct basis-vectors.
+We use the predicate $\cn{dis}(j',m)$ to indicate that all length $m$ segments in the bitstring $\ket{j}$ are pairwise distinct.
+Via our PBT framework, we have a high assurance that the distinct element state preparation program correctly prepares such a superposition state.
+
+The judgment of the efficiency of the program in successfully preparing the superposition state can easily be done by counting the number of basis-ket states in a superposition quantum state.
+Notice that every superposition state prepared by a simple Hadamard operation produces a uniform superposition, meaning that the likelihood of measuring out any basis state vectors is equally likely.
+Thus, we only need to compare the ratio between the number of basis-kets right after the Hadamard operations are applied and the basis-ket number in $\overline{q_{j+2}}$.
+Here, we count the case for $n=2^m$ where a permutation superposition state is prepared.
+For $j\in[0,n)$ with $n=2^m$, after the measurement is applied. The former contains $2^{n * m}$ different basis-kets for $n * m$ Hadamard operations, and the latter has $n!$ basis-kets in a $k$-th permutated superposition state. So, the success rate of a single try in the program is $\frac{n !}{2^{n * m}}$.
+
+\section{Discussion: Efficiency, Scalability, and Utility, Compared to State-of-the-art}\label{sec:eval}
+
+This section compares QSV's efficiency and scalability with the state-of-the-art platforms. We demonstrate that QSV can effectively validate program properties to provide confidence in program correctness. We also show that QSV \textit{scales} to validate and realize state preparation programs regardless of the program size (in terms of number of qubits required).
+We thus justify the QSV's utility in successfully capturing bugs.
+
+\begin{figure}[t]
+{\footnotesize
+\begin{center}
+\begin{tabular}{| l | c | c | c | c |  c |}
+\hline
+ Program  & QSV  QCT 8B & QSV QCT 60B  & Qiskit Sim 8B & Qiskit Sim 60B & DDSim Sim 60B \\
+ \hline
+$n$ basis-ket & < 1.5  & 2.4 & < 1.5 & No & No \\
+Modular Exponentiation & < 1.5  & 19.7 & No & No & No\\
+Amplitude Amplification & < 1.5  & 2.1 & <1.5 & No & No  \\
+Hamming Weight & < 1.5  & 24.9 & <1.5 & No & No \\
+Distinct Element & < 5  & 336  & No & No & No \\
+\hline                           
+\end{tabular}
+\end{center}
+}
+\caption{Evaluation on different state preparation programs for 8/60 qubit single registers (8B/60B). "QCT" is the time (in seconds) for QuickChick to run 10,000 tests. "Sim" records the time (in seconds) or whether or not Qiskit/DDSim can execute a single test. }
+\label{fig:self-data}
+\end{figure}
+
+\myparagraph{Efficiency}\label{sec:testefficient}
+We discuss the program development procedure in QSV, compared to state-of-the-art systems such as Qiskit.
+Discussing the efficiency of a validation framework needs to be put in the context of human efforts for program development,
+as users mainly care about how to effectively use QSV to develop state preparation programs.
+
+The general procedure for developing state preparation programs in QSV is the traditional test-driven program development.
+We are first given the program correctness properties, in the superposition state format, for different programs, such as the one in \Cref{sec:intro,sec:evaluation}.
+We then start implementing the program via a possible program pattern and see if we can write the correct program based on the pattern, where the \pqasm high-level abstraction helps write programs.
+For example, in dealing with all the programs in \Cref{fig:qiskit-data}, we first try to see if we can write all these programs via the quantum loop program pattern,
+and rewrite the correctness properties based on the strategy presented in \Cref{sec:quantumloop}.
+
+We then run our QSV validator to validate the implemented programs against the properties.
+After several rounds of corrections, one can typically judge if the program is implementable or not.
+For example, via our validator, we found that it might be hard to implement the Hamming weight and distinct element programs based on the quantum loop program pattern.
+We then switch to other program patterns to implement these programs, e.g., we utilize the repeat-until-success program pattern to implement the two programs by rewriting the correctness properties for the two programs to the ones in \Cref{sec:repeat-success} and successfully find a solution.
+Our validator can validate a program effectively via our PBT framework, which generates $10,000$ test cases every time.
+As one can see in \Cref{fig:self-data}, executing a validation step involving running $10,000$ randomly generated test cases for all our example programs costs us less than $5$ seconds for small size programs ($8$ qubits) and less than 5.5 minutes for large size programs ($60$ qubits).
+This indicates that a program developer can quickly correct minor bugs when developing their programs.
+
+On the other hand, developing state preparation programs in the start-of-the-art system might be painful,
+e.g., it is unlikely one can perform the test-driven development for implementing the programs in \Cref{fig:qiskit-data},
+mainly because of a lack of proper validation facilities.
+As we can see in \Cref{fig:self-data}, Qiskit might not execute a single test for some small-size ($8$ qubits) programs, such as distinct element programs.
+The modular exponentiation program is executed for some small number settings, but is not executable in general because the Qiskit simulator adopts some special optimizations for components in Shor's algorithm.
+Executing a large-size program ($60$ qubits) is completely impossible; either the program is too large for IBM's Aer simulator to run at all, and the simulator errors out, or the circuit construction may take hours and still not be done.
+This indicates the difficulty of developing large-scale programs by conducting small-scale testing in Qiskit, not to mention the need to validate large datasets and coverage.
+Another key issue is that the high-level abstraction support in the state-of-the-art systems is not well provided.
+In Qiskit, we can only find the quantum addition operations, while the other arithmetic and comparison operations are missing.
+In fact, we implement these operations in Qiskit based on our implementation in QSV.
+
+\myparagraph{Scalability}
+%We construct the previously mentioned programs in \pqasm and in Qiskit. 
+%\label{sec:eval-oqasm}
+To evaluate the QSV scalability, we not only compare the execution of small and large sizes against Qiskit but also another state-of-the-art quantum simulator, DDSim.
+Here, we attempted to recreate (or find existing implementations of) the aforementioned programs on DDSim and Qiskit. We also performed PBT on our \pqasm implementations on systems of various sizes and verified the rigidity of our tests by mutating either the properties or the states and verifying that the tests failed. 
+
+As shown in \Cref{fig:self-data}, we have fully validated the five examples in these papers via our PBT framework.
+As far as we know, these constitute the first validated-correct implementations of the $n$ basis-ket, Hamming weight, and distinct elements programs. 
+All other operations in the figure were validated with Quick\-Chick. To ensure these tests were efficacious, besides our program development procedures above, we also confirmed they could find hand-injected bugs; e.g., we changed the rotation angles in the \cn{Ry} gate in the amplitude amplification state preparation and confirmed that our PBT could catch the inserted bugs.
+The tables in \Cref{fig:self-data} give the running times for our validator to validate programs---the times include the cost of extracting the Roqc code to OCaml, compiling it, and running it with $10,000$ randomly generated inputs via QuickChick.
+We validated these programs on small (8-qubit) and large size (60-qubit) inputs (the number relevant to the reported qubit and gate sizes in \Cref{fig:qiskit-data}), with all the validation happening within 2.5 minutes (most of them are finished within seconds).
+%Most tests are completed in a few seconds, while the test for the distinct element superposition preparation program finishes in a few minutes. 
+For comparison, we translated our programs to \sqir, converted the \sqir programs to OpenQASM 2.0 \cite{Cross2017}, and then attempted to simulate the resulting circuits on a \textit{single test input} using DDSim~\cite{ddsim}, a state-of-the-art quantum simulator, and list the result in the fifth column. Unsurprisingly, the simulation of the 60-bit versions did not complete when running overnight.
+The third and fourth columns in \Cref{fig:self-data} show the results for executing a \textit{single program run} in Qiskit, and Qiskit executes a few small-size programs (\Cref{sec:testefficient}) and none of the large-size programs.
+%As we mentioned above, we implement these programs in Qiskit, which executes not a single run of a large size program.
+The experiment provided a good degree of assurance of the scalability of QSV.
+%The third column in \Cref{fig:self-data} shows whether or not the program is executable in DDSim, which accepts OpenQASM programs.
+%As we mentioned above, none of the programs are classically simulatable.
+%The fourth column in \Cref{fig:self-data} shows whether or not the program is executable using Qiskit. 
+%It is almost impossible for these frameworks to test the quantum programs, having the level of circuit size as well as comprehension as our example programs.
+
+\begin{wrapfigure}{r}{5.5cm}
+{\footnotesize
+\begin{center}
+\begin{tabular}{| l | c |}
+\hline
+ Operation  & QCT  \\
+ \hline
+Addition & 2  \\
+Comparison & 5  \\
+Modular Multiplication & 794 \\
+\hline                           
+\end{tabular}
+\end{center}
+}
+\caption{Arith operation QC time (60B).}
+%\vspace*{-1em}
+\label{fig:runningtime}
+\end{wrapfigure}
+
+There is a difference in the program execution between DDSim/Qiskit and QSV.
+The latter abstracts the arithmetic operations and assumes that the operations can be dealt with in the previous VQO~\cite{oracleoopsla} framework, while DDSim executes the whole circuits generated from a QSV program.
+To compare the effects, we list the QuickChick testing time (running 10,000 tests) of the operations used in our state preparation programs in \Cref{fig:runningtime};
+such running time data was given in VQO.
+The addition and comparison circuits do not greatly affect the execution of our \pqasm programs.
+The validation of modular multiplication circuits might be costly, as our $60$-bit modular exponentiation contains $60$ modular multiplication operations.
+However, a typical validation scheme might only validate the correctness of a costly subcomponent once and use its semantic property in validating other programs utilizing the subcomponents.
+More importantly, the purpose of the experiment of DDSim/Qiskit executions is to show the state-of-the-art impossibility of executing quantum programs in a classical computer, while our QSV framework can validate quantum programs.
+
+\myparagraph{Utility}
+One of the utility of a program validation framework is to find bugs or faults in the existing algorithms.
+During the quantum state preparation program development, we found several issues in two original algorithms \cite{Buhrman_2001,1366221} that utilize these special superposition states. The two algorithms both require the preparation of a superposition state of distinct elements (or the superposition state of permutations of distinct elements), but they do not specify how such a state can be effectively prepared. To the best of our knowledge, the state preparation program in \Cref{sec:distinctness} is the first program implementation of the state via the repeat-until-success scheme. As we can see in our probability analysis, the chance of preparing such a state is not very high.
+This fact might indicate that the quantum algorithms advantage arguments over classical algorithms in these works might not be solid because of the unclear preparation for the initial states in these papers. Without our implementations for these state preparation programs, it is impossible to discover these delicate potential faults in these algorithms.
+
+Indeed, in the algorithm \cite{10.5555/2011430.2011431} that uses the initial Hamming weight superposition state, the authors realized the potential low probability of preparing the initial state via the repeat-until-success scheme and pointed out the uses of a specialized gate instead of Hadamard gates, to start their repeat-until-success state preparation program. The special gates created a simple superposition state with a different probability distribution, rather than the uniform distribution in the case of using Hadamard gates. The analysis of these specialized superposition gates with different probability distributions will be included in our future work.
+
+Another utility of using QSV is to judge the implemented programs' correctness and find a more optimized implementation.
+In QSV, we can perform the tasks by using our PBT framework.
+In other frameworks, such as OpenQASM, nothing fundamentally stopped the OpenQASM developers from making the same choices. Still, we note they did not have the benefit of the \pqasm type system and PBT framework.

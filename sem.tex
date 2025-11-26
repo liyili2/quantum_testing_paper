@@ -1,0 +1,501 @@
+%\vspace*{-0.5em}
+\section{PQASM: An Assembly Language for Quantum State Preparations}
+\label{sec:pqasm}
+%\vspace*{-0.5em}
+
+We designed \pqasm to express quantum state preparation programs in a high-level abstraction, facilitating the validation of these programs.
+\pqasm operations leverage a quantum state design, with the type system to track the types of different qubits.
+Such types restrict the kinds of quantum states, facilitating effective validation and analysis of the \pqasm program utilizing our quantum state representations.
+%being effectively testable and simpler to analyze.
+%\pqasm's type system tracks the bases of variables in \pqasm programs, forbidding operations that would introduce entanglement. 
+%\pqasm states are therefore efficiently represented, so programs can be effectively tested and are simpler to analyze. 
+%In addition, \pqasm uses \emph{virtual qubits} to support \emph{position shifting operations},
+%which support arithmetic operations without introducing extra gates during translation. All of these features are novel to quantum assembly languages. 
+This section presents \pqasm states and the language's syntax, semantics, typing, and soundness results.
+
+As a running example, we program the $n$ basis-ket state preparation in \Cref{fig:intros-example} in \pqasm below.
+The repeat-until-success program creates an qubit array $\overline{q}$ consisting of all zeroes and a new qubit $q'$, applies a Hadamard gate to each qubit in $\overline{q}$, uses a comparison operator $\qbool{\overline{q}}{<}{n}{q'}$ comparing $\overline{q}$ with $n$ and storing the result in $q'$, and measures the qubit $q'$.
+If the measurement result is $1$, we stop the process, and $\overline{q}$ prepares the correct superposition state; otherwise, we repeat the process.
+$\ihad{\overline{q}}$ is a syntactic sugar of sequence of Hadamard operations as $\iseq{\ihad{\overline{q}[0]}}{\iseq{...}{\ihad{\overline{q}[m\sminus 1]}}}$.
+
+\begin{definition}[$n$ Basis-ket State Preparation Program]\label{def:circuit-example}\rm 
+Example \pqasm program $P$ to prepare $n$ superposition state in $\overline{q}$, whose qubit array length is at least $\cn{log}(n)+1$; $q'$ is a single qubit.
+
+{
+$
+P\triangleq\iseq{\inew{\overline{q}}}{\iseq{\iseq{\inew{q'}}{\ihad{\overline{q}}}}{\iseq{\qbool{\overline{q}}{<}{n}{q'}}{\smea{x}{q'}{\sifb{x=1}{\sskip}{P}}}}}
+$
+}
+\end{definition}
+
+\subsection{\pqasm States} \label{sec:pqasm-states}
+
+\begin{figure}[t]
+\vspace*{-0.8em}
+{\small
+  \[\hspace*{-0.5em}
+  \begin{array}{l}
+  \begin{array}{l@{\;\;}c@{\;}c@{\;}l@{\qquad}l@{\;\;}c@{\;}c@{\;}l@{\;}@{\qquad}l@{\;\;}c@{\;}c@{\;}l@{\;}}
+        \text{Qubit Name}  & q && & \text{Nat} & n,m & \in & \mathbb{N} &      \text{Real} & r & \in & \mathbb{R}\\[0.2em]
+        \text{Complex} & z & \in & \mathbb{C} & \text{Bit} & b & \in & \{0,1\} & \text{Bitstring} & c & ::= & \overline{b}
+  \end{array}\\[1em]
+\begin{array}{l c c l@{\;}c@{\;}l@{\;}c@{\;}l}
+      \text{Qubit Basis State} & \nu & ::= & \aket{b}{1} & & &\mid &\qket{r} \\
+       \text{Qubit Records} & \theta & ::= & (\overline{q} &, & \overline{q} &, & \overline{q}) \\
+      \text{Type} & \tau & ::= & \thadt & \mid& \tnort & \mid& \trott\\
+      \text{Basis Vector} & \eta & ::= &  \Motimes_j\nu_j  \\
+      \text{Basis-Ket} & \rho & ::= &  z\cdot \eta  \\
+      \text{Quantum Data} & \varphi & ::= & \rho &\mid& \sum_{b=0}^1 \varphi \\
+      \text{Quantum State} & \Phi & ::= & \theta \to \varphi
+    \end{array}
+    \end{array}
+  \]
+  \vspace*{-1em}
+  \caption{\pqasm state syntax. $\overline{S}$ denotes a sequence of $S$. $\aket{c}{n\splus 1} \equiv \aket{c[0]}{1}\otimes...\otimes\aket{c[n]}{1}$, with $\slen{c}=n\splus 1$.}
+  \label{fig:pqasm-state}
+}
+\vspace*{-1em}
+\end{figure}
+
+A \pqasm program state is represented according to the grammar in \Cref{fig:pqasm-state}.
+A quantum state is managed in terms of qubit records, each of which is a collection of qubits possibly being entangled, while qubits in different records are guaranteed to have no entanglement. A state $\Phi$ maps from qubit records $\theta$ to a quantum datum $\varphi$.
+Our quantum data consists of a quantum entanglement state that can be analyzed as two portions: 1) a sequence of sum operators $\sum_{b_1=0}^1...\sum_{b_n=0}^1$, and 2) a basis-ket $\rho$, a pair of a complex amplitude $z$ and a tensor product of basis vector $\eta$, which is a tensor of single qubit basis states $\nu$.
+Each sum operator represents the creation of a superposition state via a Hadamard operation $\cn{H}$, i.e., the number of sum operators in a state for a qubit record $\theta$ represents the number of Hadamard operations applied to qubits in the state so far.
+The variable $\rho=z\cdot \eta$ represents a basis-ket of a quantum state.
+To understand the relation between a basis-ket and a whole quantum superposition state connected with a sequence of sum operators,
+one can think of a superposition state as a collection of "quantum choices", and a basis-ket represents a possible choice, i.e., a measurement of a qubit record produces one possible choice, with the amplitude $z$ related to the probability of the choice.
+%We utilize the two-portion view to perform symbolic execution and abstract interpretation in \Cref{sec:implementation}.
+
+A qubit basis state $\nu$ has one of two forms, $\aket{b}{1}$ and $\qket{r}$.
+The former corresponds to the two types $\thadt$ and $\tnort$, and the latter corresponds to the $\trott$ type.
+The three types of qubit basis states are represented as the three fields in a qubit record,
+i.e., $(\overline{q}_1, \overline{q}_2, \overline{q}_3)$ has three disjoint qubit sequences.
+$\overline{q}_1$ is always typed as $\thadt$, $\overline{q}_2$ has type $\tnort$, and $\overline{q}_3$ has type $\trott$.
+The $\thadt$ and $\tnort$ typed qubits are in the computational basis.
+The $\trott$ typed basis state is different from the other types in terms of \emph{bases}, and it has the form $\qket{r} = \cn{cos}(r)\aket{0}{1}+\cn{sin}(r)\aket{1}{1}$, which is a basis state in the Hadamard basis with $Y$-axis rotations.
+Applying a $\cn{Ry}$ with the $Y$-axis angle $r$ to a $\aket{0}{1}$ qubit results in $\qket{r}=\cn{cos}(r)\ket{0}+\cn{sin}(r)\ket{1}$.
+ 
+\subsection{PQASM Syntax}\label{sec:pqasm-syn}
+
+\begin{figure}[h]
+\vspace*{-0.5em}
+{\small 
+\begin{center}
+  $ \hspace*{-0.8em}
+\begin{array}{l}
+      \;\;\text{Classical Variable}~x,y \qquad\qquad \text{Boolean Expressions}~B\\
+\begin{array}{llcl}
+      \text{Parameters} & \alpha & ::= & \overline{q} \mid n\\
+      \text{OQASM Arithemtic Ops} & \mu & ::= & \iadd{\alpha}{\alpha} \mid \modmult{n}{\alpha}{m} \mid \qbool{\alpha}{=}{\alpha}{q} \mid \qbool{\alpha}{<}{\alpha}{q}\mid ...\\
+      \text{Instruction} & \iota & ::= & \mu \mid \iry{r}{q} \mid \ictrl{q}{\iota} \mid \iseq{\iota}{\iota}\\
+      \text{Program} & e & ::= & \iota \mid \iseq{e}{e} \mid \ihad{q} \mid \inew{{q}} \mid \smea{x}{\overline{q}}{e} \mid \sifb{B}{e}{e}
+\end{array}
+    \end{array}
+  $
+  \end{center}
+}
+\vspace*{-0.5em}
+  \caption{\pqasm syntax.}
+  \label{fig:pqasm}
+  \vspace*{-0.5em}
+\end{figure}
+
+\Cref{fig:pqasm} presents \pqasm's syntax.  A \pqasm program $e$ is either an instruction $\iota$, a sequence operation $\iseq{e}{e}$, applying a Hadamard operation $\ihad{q}$ to a qubit $q$ to create a superposition, creating ($\inew{q}$) a new blank qubit $q$, a \cn{let} binding that measures a sequence of qubits $\overline{q}$ and uses the result $x$ in $e$, or classical conditional $\sifb{B}{e}{e}$ with classical Boolean guard $B$.
+Each \cn{let} binding assigns the measurement result of a quantum function expression to a variable $x$, representing a binary sequence.
+In measurement operations ($\mathpzc{M}$), we apply an operator to a \emph{qubit} $q$ or a sequence of quantum qubits $\overline{q}$.
+We assume $\ihad{\overline{q}}$ and $\inew{\overline{q}}$ as syntactic sugars of applying a sequence of Hadamard and new-qubit operations.
+
+The instructions $\iota$ correspond to unitary quantum circuit operations, including unitary oracle arithemtic operations ($\mu$) implementable through \oqasm operations \cite{oracleoopsla} on a qubit sequence $\overline{q}$ (detailed in Appendix, and it permits $Z$-axis rotation gates), a $Y$-axis rotation gate $\iry{r}{q}$ that rotates an angle $r$, a quantum control instruction ($\ictrl{q}{\instr}$), and a sequence operation ($\iseq{\iota}{\iota}$). Operation $\ictrl{q}{\instr}$ applies instruction $\instr$ \emph{controlled} on qubit $q$. 
+%
+In this paper, we provide several sample arithmetic oracle operations $\mu$ in \Cref{fig:pqasm}, such as addition ($\iadd{\alpha}{\alpha}$, adding the first to the second), modular multiplication ($\modmult{n}{\alpha}{m}$), quantum equality ($\qbool{\alpha}{=}{\alpha}{q}$), quantum comparison ($\qbool{\alpha}{<}{\alpha}{q}$), etc.
+Each parameter $\alpha$ is either a group of qubits $\overline{q}$ or a number $n$.
+Recall that a basis-ket state of a qubit array $\overline{q}$ is essentially a bitstring with a complex amplitude.
+As in the summation formula in \Cref{sec:background}, a quantum arithmetic operation applies the classical version of the operation to each basis-ket in a quantum superposition state, e.g., $\qbool{\overline{q}}{=}{n}{q}$ compares the bitstring representation of each basis-ket in $\overline{q}$ with the number $n$ and stores the result in $q$.
+
+In a \pqasm program containing qubit array $\overline{q}$, $x$ in a \cn{let} binding  binds a local classical value ---
+we bind $x$'s value with the computational basis measurement result ($\mathpzc{M}$) on qubits $\overline{q}$. While the classical variable scope is local, the quantum qubits are immutable and globally scoped, i.e., quantum operations are applied to a global quantum state; each qubit in the state is referred to by quantum qubit names ($q$) in the program.
+In \pqasm, we express a SKIP operation ($\iskip$) via a $\mu$ operation having empty qubits, as $
+\mu \; \equiv\; \iskip\;\;\cn{when}\;\;FV(\mu)=\emptyset
+$ ($FV$ collects free variables).
+
+%In \pqasm, we assume that an instruction is equivalent to a SKIP operation ($\iskip$), if its qubit number is $0$, $FV(\mu)=\emptyset$.
+%In the \pqasm instruction level, one can utilize \oqasm oracle function $\mu$ to express different kinds of unitary gates, such as SKIP ($\iskip$), $\cn{X}$, and $Z$-axis rotation gates. Here, $FV(\mu)=\emptyset$ (free variables in $\mu$) makes $\mu$ become a SKIP operation $\iskip$.
+
+\subsection{Semantics}\label{sec:pqasm-dsem}
+
+\begin{figure}[t]
+\vspace*{-0.5em}
+{\footnotesize
+\[
+\begin{array}{lll}
+
+\llbracket \mu \rrbracket\eta &= \app{\llbracket \mu \rrbracket\eta(\overline{q})}{\eta}{\overline{q}}
+&
+\texttt{where  }
+FV(\mu) = \overline{q}
+\\[0.5em]
+
+\llbracket \iry{r}{q} \rrbracket\eta &=  \app{\qket{r}}{\eta}{q}
+&
+\texttt{where  }
+\eta(q) = \ket{0}{1}
+\\[0.4em]
+
+\llbracket \iry{r}{q} \rrbracket\eta &=  \app{\qket{\frac{3\pi}{2}- r}}{\eta}{q}
+&
+\texttt{where  }
+\eta(q) = \ket{1}{1}
+\\[0.4em]
+
+\llbracket \iry{r}{q} \rrbracket\eta &=  \app{\qket{r+r'}}{\eta}{q}
+&
+\texttt{where  }
+\eta(q) = \qket{r'}
+\\[0.4em]
+
+\llbracket \ictrl{q}{\instr} \rrbracket\eta &=  \csem(\eta(q),\instr,\eta)
+&
+\texttt{where  }
+\csem({\ket{0}{1}},{\instr},\eta)=\eta\quad\;\,
+\csem({\ket{1}{1}},{\instr},\eta)=\llbracket \instr \rrbracket\eta
+\\[0.4em]
+
+\llbracket \iota_1; \iota_2 \rrbracket\eta &= \llbracket \iota_2 \rrbracket (\llbracket \iota_1 \rrbracket\eta)
+\end{array}
+\]
+}
+{\footnotesize
+\begin{center}
+$
+\app{\eta'}{\eta}{\overline{q}}=\app{\eta'(q)}{\eta}{\forall q\in \overline{q}.\;q}
+$
+\end{center}
+}
+\vspace*{-0.5em}
+\caption{Instruction level \pqasm semantics; $\eta(\overline{q})$ restricts the qubit states $\overline{q}$ in $\eta$.}
+  \label{fig:deno-sem}
+  \vspace*{-1em}
+\end{figure}
+
+\pqasm has two levels of semantics: instruction and program levels.
+The \textit{instruction} level semantics is a partial function $\llbracket - \rrbracket$ from an instruction $\instr$ and input basis vector state $\rho$ to an output state $\eta'$, written 
+$\llbracket \instr \rrbracket\eta=\eta'$, shown in \Cref{fig:deno-sem}.
+The \textit{program} level semantics is a labelled transition system $(\Phi,e) \xrightarrow{r} (\Phi',e')$ in \Cref{fig:exp-semantics}, stating that the input configuration $(\Phi,e)$ is possibly evaluated to an output configuration $(\Phi',e')$ with the probability $r$.
+It essentially represents a Markov chain, where a program evaluation path represents a chain of probabilities, showing the probability path leads to a particular configuration from the initial configuration.
+
+In the instruction level semantics, the semantic rule description assumes that one can locate a qubit state $q$ in $\eta$ as $\eta(q)$, where we can refer to $\app{\nu}{\eta}{q}$ as updating the qubit state $\nu$ for the qubit $q$ in $\eta$.
+Recall that a length $n$ basis vector state $\eta$ is a tuple of $n$ qubit values, modeling the tensor product $\nu_1\otimes \cdots \otimes \nu_n$. 
+The rules implicitly map each qubit variable $q$ to a qubit value position in the state, e.g., 
+$\eta(q)$ corresponds to some sub-state $\nu_q$, where $\nu_q$ locates at the $q$'s position in $\eta$.
+%
+Many of the rules in \Cref{fig:deno-sem} update a \emph{portion} of a state. We write $\app{\nu_{q}}{\eta}{q}$ to update the qubit value of $q$ in $\eta$ with $\nu_q$, and
+$\app{\eta'}{\eta}{\overline{q}}$ to update a range of qubits $\overline{q}$ according to the vector state $\eta'$, i.e., we update each $q\in\overline{q}$ with the qubit value $\eta'(q)$ and $\slen{\eta'}=\slen{\overline{q}}$.
+The function \texttt{cu} is a conditional operation depending on the $\tnort$/$\thadt$ typed qubit $q$. 
+
+\begin{figure*}[t]
+\vspace*{-0.5em}
+{\footnotesize
+  \begin{mathpar}
+      \inferrule[S-Ins]{b = b_1,...,b_n\\ \varphi = \sum_{b_1=0}^1...\sum_{b_n=0}^1 z_b\cdot\eta_b \\\llbracket \iota \rrbracket (\eta_b)=\eta'_b}{ (\Phi[\theta\mapsto \varphi],\iota) \xrightarrow{1}  (\Phi[\theta\mapsto \sum_{b_1=0}^1...\sum_{b_n=0}^1 z_b\cdot\eta'_b], \sskip)}
+
+        \inferrule[S-SeqC]{(\Phi,e_1) \xrightarrow{r} (\Phi', e'_1) }
+        {(\Phi,\sseq{e_1}{e_2}) \xrightarrow{r} (\Phi',\sseq{e'_1}{e_2}) }
+
+        \inferrule[S-SeqT]{}
+        {(\Phi,\sseq{\sskip}{e_2}) \xrightarrow{1} (\Phi,e_2) }
+        
+        \inferrule[S-New]{}
+        {(\Phi,\inew{q}) \xrightarrow{1} (\app{\aket{0}{1}}{\Phi}{(\emptyset,q,\emptyset)},\sskip)}
+
+      \inferrule[S-IfT]{}{ (\Phi,\sifb{\cn{true}}{e_1}{e_2}) \xrightarrow{1} (\Phi,e_1)}
+ 
+       \inferrule[S-IfF]{}{ (\Phi,\sifb{\cn{false}}{e_1}{e_2}) \xrightarrow{1} (\Phi,e_2)}
+        
+        \inferrule[S-Had]{}{ (\Phi[(\emptyset,q,\emptyset)\mapsto \aket{b}{1}],\ihad{q}) \xrightarrow{1} (\app{\sum_{j=0}^1 (\sminus 1)^{j\cdot b}\aket{j}{m}}{\Phi}{(q,\emptyset,\emptyset)}, \sskip) }
+             
+           \inferrule[S-Mea]{\Phi = \Phi' \uplus \{\uparrow\overline{q} \mapsto \Msum_j z_j\aket{c}{m}{\aket{c_j}{n}}+\qfun{\phi}{\overline{q}',c \neq \overline{q}'}\}  \\ r= \Msum_j \slen{z_j}^2 }
+  {(\Phi,\smea{x}{\overline{q}}{e}) \xrightarrow{r} (\Phi'\uplus \{ (\uparrow\overline{q}) \textbackslash \overline{q} :  \Msum_j {\frac{z_j}{\sqrt{r}}}{\aket{c_j}{m}}\},e[c/x]) }
+  \end{mathpar}
+}
+{\footnotesize
+\begin{center}
+$
+\begin{array}{lcl}
+\uparrow\overline{q}&\triangleq& \exists \overline{q}_1, \overline{q}_2,\overline{q}_3 \,.\,\uparrow\overline{q}=(\overline{q}_1, \overline{q}_2,\overline{q}_3)\wedge \overline{q} \subseteq \overline{q}_1 \uplus \overline{q}_2 \uplus \overline{q}_3
+\\[0.2em]
+\qfun{(\Msum_{i}{z_i}{\aket{c_{i}}{m}}{\aket{c'_i}{n}}+\varphi)}{\overline{q},b} &\triangleq& \Msum_{i}{z_i}{\aket{c_{i}}{m}}{\aket{c'_i}{n}}
+      \qquad\qquad\texttt{where}\quad\forall i.\,\slen{c_{i}}=\slen{\overline{q}'}=m\wedge \denote{b[c_{i}/\overline{q}']}=\texttt{true}
+\end{array}
+$
+\end{center}
+}
+\vspace*{-0.5em}
+\caption{Program Level \pqasm semantics.}
+\label{fig:exp-semantics}
+\vspace*{-1em}
+\end{figure*}
+
+
+\Cref{fig:exp-semantics} shows the program level semantics.
+$\Phi$ is the quantum state mapping from qubit records to superposition state values.
+Since qubit records in $\Phi$ partition the qubit domain, we can think of $\Phi$ as a multiset of pairs of qubit records and state values, as in \rulelab{S-Mea},
+i.e., $\Phi[\theta \mapsto \varphi] \equiv \Phi \uplus \{\theta\mapsto \varphi\}$.
+Rule \rulelab{S-Ins} connects the instruction level semantics with the program level by evaluating each basis vector state $\eta$ through the instruction $\iota$.
+Rule \rulelab{S-New} creates a new blank ($\aket{0}{1}$) qubit, which is stored in the record $(\emptyset,q, \emptyset)$, a qubit ($q$) being created are $\tnort$ typed.
+For a $\tnort$ typed qubit $(\emptyset, q, \emptyset)$, rule \rulelab{S-Had} turns the qubit to be $\thadt$ typed superposition, as $(q,\emptyset, \emptyset)$.
+
+%These rules implicitly map each qubit variable $q$ to a qubit value position in the state, e.g., 
+%$\eta(q)$ corresponds to some sub-state $\nu_q$, where $\nu_q$ locates at the $q$'s position in $\eta$.
+%
+%Many of the rules in \Cref{fig:deno-sem} update a \emph{portion} of a
+%state. We write $\app{\nu_{q}}{\eta}{q}$ to update the qubit value of $q$ in $\eta$ with $\nu_q$, and
+%$\app{\nu_{\overline{q}}}{\eta}{\overline{q}}$ to update a range of qubits $\overline{q}$ according to the qubit \emph{tuple} $\nu_{\overline{q}}$.
+Rules \rulelab{S-IfT} and \rulelab{S-IfF} perform classical conditional evaluation.
+In \pqasm, the classical variables are evaluated via a substitution-based approach, as in \rulelab{S-Mea}.
+The measurement rule (\rulelab{S-Mea}) produces a probability $r$ label, and the value comes from the measurement result.
+We first rewrite the quantum state to be a linear sum of computational basis-kets $\Msum_j r_j\aket{c}{m}{\aket{c_j}{n}}+\qfun{\varphi}{\overline{q}',c \neq \overline{q}'}$,
+where every basis-vector $\aket{c}{m}$ (or $\aket{c_j}{n}$) is a bitstring, and all the sum operators are resolved as a single sum.
+
+Any \pqasm state can be written as a sum of computational basis-kets.
+As the equations shown below, the basis-ket state $\aket{c}{n}\qket{r}$ can be rewritten to be a sum of two computational basis-kets as $\cn{cos}(r)\aket{c}{n}\aket{0}{1}+\cn{sin}(r)\aket{c}{n}\aket{1}{1}$, while the two sum operators can be replaced as a single sum operator over length-$2$ bitstring $c$, where we replace $b_j$ with $c[0]$ (indexing $0$ of $c$) and $b_k$ with $c[1]$.
+
+{\small
+\begin{center}
+$
+\aket{c}{n}\qket{r} \equiv \cn{cos}(r)\aket{c}{n}\aket{0}{1}+\cn{sin}(r)\aket{c}{n}\aket{1}{1}
+\qquad
+\sum_{b_j=0}^1 \sum_{b_k=0}^1 \eta \equiv \sum_{c\in\{0,1\}^2} \eta[c[0]/b_j][c[1]/b_k]
+$
+\end{center}
+}
+
+% Several takeaways about \pqasm denotational semantics.
+% For any operation application within the space domain $\hsp{S}^d$, the semantic application $U$ only has effect on the specific qubit ($\varphi_{(x,n)}$) / qubit array ($\varphi_{x}$) that it targets at, which does not create entanglement with other subsystems.
+% This clear separation only works for the domain $\hsp{S}^d$.
+% When we compile these operations to \sqir and see their effects on a general Hilbert space $\hsp{H}$, they might have entanglement effects.
+% \yxp{Even if we turn it into unitary over the Hilbert space, it still does not generate entanglement with other subsystems.}
+% \liyi{Can you have CNOT x y when you have x is Had and y is in Nor, then you will definitely have entanglement. }
+% However, the clear separation in $\hsp{S}^d$ provides us a decompositional and analytical way of verifying and validating quantum oracles; thus, each sub-oracle-component can be analyzed individually. The potential entanglements in a general Hilbert space becomes the naturally extended (additive) superposition effects.
+% In addition, all semantic functions in Fig.~\ref{fig:deno-sem} are carefully engineered to only target qubits in a register $\varphi$, and does not target on invidual vectors in the vector space $\varphi$ represents.
+% For example, $\xsem$ is defined for a basis phase space case $\ket{c}$, and we also define the case for superposition $\frac{1}{\sqrt{2}}(\ket{0}+(-1)^c\ket{1})$. We do not assume the the semantics of the basis phase space is automatically extended to dealing with individual elements in the superposition case.
+% By using the semantics to prove quantum oracle properties, we only need to consider $O(n)$ qubits instead of the possible $2^n$ expanded vector elements.
+% The semantics of a universal quantum assembly language like \sqir, by contrast, represents a quantum state as a unitary matrix whose size is \emph{exponential} in the number of vectors by expanding qubits to vectors in a register. \sqir's semantics also relies on the use of concrete qubits; using a unitary matrix and virtual positions would inject a virtual-to-physical mapping into the semantic definition, which can severely complicate proofs~\cite{PQPC}. This leads to the successful correctness proof of the QFT-adder for the first time (Sec.~\ref{sec:op-verification}).
+% We only define semantic functions for qubit forms when it is possible to apply. For example, we do not define $\xsem$ for the form $\frac{1}{\sqrt{2}}(\ket{0}+e^{2\pi{i} b}\ket{1})$, because the \pqasm type system does not allow it. 
+
+\subsection{Typing}
+\label{sec:pqasm-typing}
+
+In \pqasm, typing is with respect to a \emph{type environment} $\Omega$, a set of qubit records partitioning qubits into different disjoint union regions, and a \emph{kind environment} $\Sigma$, a set tracking local variable scopes.
+Typing judgments are two leveled, and are written as $\Omega\vdash \instr \triangleright_g \Omega'$ and $\Sigma; \Omega\vdash e\triangleright \Omega'$,
+ which state that instruction $\instr$ and program expression $e$ are well-typed under environments $\Omega$ and $\Sigma$, and
+transforms variables' bases as characterized by type environment $\Omega'$.
+$\Omega$ is populated via qubit creation operations (\cn{new}), while $\Sigma$ is populated via \cn{let} binding.
+Typing rules are in \Cref{fig:exp-well-typed}.
+
+
+\begin{figure}[t]
+\vspace*{-0.5em}
+{\footnotesize
+  \begin{mathpar}
+ 
+      \inferrule[Eqv]{\Omega\equiv \Omega'\\\Omega' \vdash_g e\triangleright \Omega''}{ \Omega\vdash_g e\triangleright\Omega''}
+
+     \inferrule[RyN]{}{\{(\emptyset,\{q\},\emptyset)\} \uplus \Omega\vdash_{\cn{C}} \iry{r}{q}\triangleright \{(\emptyset,\emptyset,\{q\})\}\uplus \Omega}
+     
+     \inferrule[RyH]{\trot{\theta}=\{q\} \uplus \overline{q}}{\{\theta\}\uplus \Omega \vdash_{g}  \iry{r}{q}\triangleright \{\theta\}\uplus \Omega}
+
+     \inferrule[MuT]{\overline{q} \subseteq \overline{q_1}\cup \overline{q_2}}{\{(\overline{q_1},\overline{q_2},\overline{q_3})\}\uplus \Omega \vdash_g \mu(\overline{q})\triangleright \{(\overline{q_1},\overline{q_2},\overline{q_3})\}\uplus \Omega}
+
+    \inferrule[CuN]{\{\tnor{\theta}\downarrow \overline{q}\} \uplus \Omega \vdash_{\cn{M}} \iota \triangleright \{\tnor{\theta}\downarrow \overline{q}\}\uplus \Omega}{\{\tnor{\theta}\downarrow \{q\}\uplus\overline{q}\} \uplus \Omega \vdash_g \ictrl{q}{\iota} \triangleright \{\tnor{\theta}\downarrow \{q\}\uplus\overline{q}\} \uplus \Omega} 
+
+    \inferrule[CuH]{\{\thad{\theta}\downarrow \overline{q}\} \uplus \Omega \vdash_{\cn{M}} \iota \triangleright \{\thad{\theta}\downarrow \overline{q}\} \uplus \Omega}{\{\thad{\theta}\downarrow \{q\}\uplus\overline{q}\} \uplus \Omega \vdash_g \ictrl{q}{\iota} \triangleright \{\thad{\theta}\downarrow \{q\}\uplus\overline{q}\} \uplus \Omega} 
+
+     \inferrule[Seq]{\Omega\vdash_g \instr_1\triangleright \Omega' \\ \Omega'\vdash_g \instr_2\triangleright \Omega''}{\Omega \vdash_g \iseq{\instr_1}{\instr_2}\triangleright \Omega''} 
+
+       \inferrule[ESeq]{\Sigma;\Omega\vdash e_1\triangleright \Omega' \\ \Sigma;\Omega'\vdash e_2\triangleright \Omega''}{\Sigma;\Omega \vdash \iseq{e_1}{e_2}\triangleright \Omega''} 
+      
+      \inferrule[New]{q\not\in \Omega}{\Sigma;\Omega \vdash \inew{{q}}\triangleright \Omega \uplus \{(\emptyset,{q},\emptyset)\}} 
+
+    \inferrule[HT]{}{\Sigma;\Omega\uplus\{(\emptyset,q,\emptyset)\} \vdash \ihad{q}\triangleright \Omega\uplus\{(q,\emptyset,\emptyset)\}} 
+      
+      \inferrule[Tup]{\Omega\vdash_{\cn{C}} \instr\triangleright \Omega'}{\Sigma;\Omega \vdash \iota\triangleright \Omega'} 
+               
+      \inferrule[Mea]{\overline{q}\subseteq \theta \\ \Sigma\cup\{x\};\Omega \uplus\{\theta\textbackslash \overline{q}\} \vdash e \triangleright \Omega'}{\Sigma;\Omega \uplus\{\theta\} \vdash \smea{x}{\overline{q}}{e}\triangleright \Omega'} 
+      
+      \inferrule[TIf]{\Sigma \vdash B \\ \Sigma;\Omega\vdash e_1 \triangleright \Omega'\\\Sigma;\Omega\vdash e_2 \triangleright \Omega'}{\Sigma;\Omega\vdash \sifb{B}{e_1}{e_2} \triangleright \Omega'} 
+  \end{mathpar}
+}
+\vspace*{-0.8em}
+  \caption{\pqasm typing rules. $(\overline{q}_1,\overline{q}_2,\overline{q}_3) \textbackslash \overline{q} \triangleq (\overline{q}_1 \textbackslash\, \overline{q},\overline{q}_2 \textbackslash\, \overline{q},\overline{q}_3 \textbackslash\, \overline{q})$, where $\overline{q}_1 \textbackslash\, \overline{q}$ is set subtraction. }
+  \label{fig:exp-well-typed}
+  \vspace*{-1em}
+\end{figure}
+
+The instruction level type system is flow-sensitive, where $g$ is the context flag and can be either $\cn{M}$ or $\cn{C}$, indicating whether the current instruction is inside a controlled operation. The program level type system communicates with the instruction level by assuming a \cn{C} mode context flag, shown in rule \rulelab{Tup}.
+We explain the necessity of the context flag below.
+Each qubit record $\theta$ represents an entanglement group, i.e., qubits in the same record might or might not be entangled, while qubits in different records are ensured not to be entangled.
+
+{\footnotesize
+\begin{center}
+$
+\begin{array}{l@{\;}c@{\;}l}
+(\overline{q_1},\overline{q_2},\overline{q_3})\uplus(\overline{q_4},\overline{q_5},\overline{q_6}) &\equiv& 
+(\overline{q_1}\uplus\overline{q_4},\overline{q_2}\uplus \overline{q_5},\overline{q_3}\uplus \overline{q_6})
+\\[0.2em]
+(\emptyset,\overline{q_1}\uplus \overline{q_2},\overline{q_3}\uplus \overline{q_4}) &\equiv& (\emptyset,\overline{q_1},\overline{q_3})\uplus (\emptyset,\overline{q_2},\overline{q_4})
+\end{array}
+$
+\end{center}
+}
+
+In our type system, we permit ordered equational rewrites among quantum qubit states.
+Each type environment, mainly the operation $\uplus$, admits associativity, commutativity, and identity equational properties.
+The $\uplus$ operations in the three fields in a qubit record also admit the three properties.
+Other than the three equational properties, we admit the above partial order relations, where we permit the rewrites from left to right in our type system to permit qubit records merging and splitting.
+Record merging can always happen, i.e., two qubit entanglement groups can be merged into one.
+Qubit splitting cannot occur in $\thadt$ typed qubits.
+A qubit record, including a $\thadt$ typed qubit, represents a quantum entanglement with qubits not separable,
+while qubits being $\tnort$ and $\trott$ typed can be split into different records.
+Rule \rulelab{Eqv} imposes the equivalence relation to permit the rewrites, only allowing rewrites from left to right, of equivalent qubit records.
+Note that a type environment determines qubit record scopes in a quantum state $\varphi$ (\Cref{fig:pqasm-state}),
+i.e., a quantum state should have the same qubit record domain as the type environment at a program point,
+so the equational rewrite of a type environment might affect the qubit state representation.
+
+Other than the equational rewrites, the type system enforces three properties. 
+First, it enforces that classical and quantum variables are properly scoped.
+%expressions and instructions are well-formed,
+%meaning that classical and quantum variables are locally scoped.
+Rule \rulelab{Mea} includes the local variable $x$ in $\Sigma$, while rule \rulelab{TIf} ensures that any variables mentioned in $B$ are properly scoped by the constraint $FV(B)\subseteq \Sigma$ \footnote{The rule is parameterized by different $B$ formalism.}, i.e., all free variables in $B$ are bounded by $\Sigma$.
+Note that the two branches of \rulelab{TIf} have the same output $\Sigma'$, i.e., the qubit manipulations in the two branches need to have the same effect.
+If one branch has a measurement on a qubit, the other branch must have the same qubit measurement.
+
+Rule \rulelab{New} creates a new record $(\emptyset,q,\emptyset)$ in the post-environment, provided that $q$ does not appear in any record in $\Omega$.
+In rule \rulelab{RyH}, the premise $\trot{\theta}=\{q\} \uplus \overline{q}$ utilizes $\trott$ to finds the $\trott$ filed in the record $\theta$ and ensures that $q$ is in the field. In rule \rulelab{CuH}, the premise $\thad{\theta}\downarrow \{q\}\uplus\overline{q}$ ensures that the controlled position $q$ is in the $\thadt$ field in $\theta$.
+In rule \rulelab{MuT}, we ensure that the qubits $\overline{q}$ being applied by the $\mu$ operation are $\tnort$ and $\thadt$ typed, through the premise $\overline{q} \subseteq \overline{q_1}\cup \overline{q_2}$.
+
+Second, we ensure that expressions and instructions are well-formed, i.e., any control qubit is distinct from the target(s), 
+which enforces the quantum \emph{no-cloning rule}.
+In rules \rulelab{CuH} and \rulelab{CuN} for control operations, when typing the target instruction $\iota$ (the upper level), we remove the control qubit $q$ in the records to ensure that $q$ cannot be mentioned in $\iota$.
+In rule \rulelab{Mea}, we also remove the measured qubits $\overline{q}$ from the record $\theta$.
+
+Third, the type system enforces that expressions and instructions leave affected qubits in a proper type ($\tnort$, $\thadt$, and $\trott$), representing certain forms of qubit states, mentioned in \Cref{fig:pqasm-state}; therefore, one can utilize the procedure mentioned in \Cref{sec:intro} to analyze \pqasm programs effectively.
+The key is to utilize the summation formula to reduce the analysis of a general quantum state to that of a quantum state without entanglement.
+Specifically, the $\iry{r}{q}$ opeartion is permitted only if $q$ is of $\tnort$ type, which is turned to $\trott$ type and stays there;
+$\mu$ can be applied to $\tnort$ typed qubits $\overline{q}$ where $FV(\mu)=\overline{q}$; and a control qubit $q$ in $\ictrl{q}{\iota}$ can be applied to a $\tnort$ and $\thadt$ typed qubit.
+
+We ensure type restrictions for qubits via pre- and post-type environments.
+Rule \rulelab{HT} permits the generation of $\thadt$ type qubits, a.k.a. superposition qubits $q$, provided that $q$ is of $\tnort$ type and not entangled with other qubits. Once a Hadamard operation is applied, we turn the qubit types to $\thadt$ in the post-type environment, so one cannot apply Hadamard operations again to the qubits.
+This does not mean that users can only apply Hadamard operations once in \pqasm, because combining \cn{X} (our oracle operation) and \cn{Ry} gates can produce a Hadamard gate. We utilize the type information to locate the first appearance of Hadamard operations, identify them as the source of superposition, and apply treatments for them in our validation testing framework; see \Cref{sec:rand-testing}.
+
+\begin{wrapfigure}{r}{3cm}
+{\small
+$\begin{array}{c}
+  \Qcircuit @C=0.5em @R=0.5em {
+    &                     \qw & \ctrl{1} &  \qw \\
+    &                     \gate{Ry(0)}  & \gate{Ry(r)}  & \qw    
+    }
+    \end{array}
+$
+}
+\caption{Ensuring qubits inside a controlled \cn{Ry} have the same type.}
+%\vspace*{-1em}
+\label{fig:rygate}
+\end{wrapfigure}
+
+In controlled operations (rules \rulelab{CuN} and \rulelab{CuH}), we ensure that the pre- and post-type environments are the same.
+In $\ictrl{q}{\iota}$, if $\iota$ contains a \cn{Ry} operation, applying to a qubit $q$, $q$ must already be $\trott$ type.
+\Cref{fig:rygate} provides a programming prototype satisfying this type requirement,
+where programmers explicitly add a \cn{Ry} gate before the controlled \cn{Ry} operation to ensure the second qubit is in $\trott$ type.
+The extra \cn{Ry} operation can be a $0$ rotation, equivalent to a SKIP operation, and can be removed by an optimizer when compiling to quantum circuits.
+%
+The above qubit type restriction does not depend on the applications of controlled operations.
+We ensure this by associating the context flags with the instruction level type system.
+When applying a $\ictrl{q}{\iota}$ operation, rules \rulelab{CuN} and \rulelab{CuH} turn the context flag to $\cn{M}$, indicating that $\iota$ lives inside a controlled operation.
+Rule \rulelab{RyN} requires a context flag \cn{C}, meaning that the rule is valid only if the \cn{Ry} operation lives outside any controlled operation.
+In contrast, rule \rulelab{RyH} does not require a specific context flag, which indicates that a \cn{Ry} operation inside a controlled node must apply to a qubit already in $\trott$ type.
+
+
+% \begin{figure}[t]
+% {\footnotesize
+% \begin{center}
+% \begin{tikzpicture}[->,>=stealth',shorten >=1pt,auto,node distance=3.2cm,
+%                     semithick]
+%   \tikzstyle{every state}=[fill=white,draw=black,text=black]
+% 
+%   \node[initial,accepting,state] (A)              {$\texttt{OK}$};
+%   \node[state]         (B) [right of=A] {$ $};
+% 
+%   \path (A) edge [loop above]            node {$b,\epsilon / \epsilon$} (A)
+%             edge  [above] node {$a,\emptyset / a$} (B);
+%   \path (B) edge [loop right]            node [right] {$\begin{array}{l}b,\epsilon / \epsilon\\
+%                                                                 a,a' / a a'\\
+%                                                                 a,\overline{a} / \epsilon\\
+%                                                  \end{array}$} (B)
+%             edge  [bend left]             node [above] {$\epsilon,\emptyset / \emptyset$} (A);
+% \end{tikzpicture}
+% \end{center}
+% }
+% {
+% \footnotesize
+% $
+% \begin{array}{l}
+% a,a'\in \{\ilshift{x},\irshift{x},\irev{x} \} \wedge a' \neq \overline{a}
+% \\
+% \overline{\ilshift{x}}=\irshift{x}
+% \quad
+% \overline{\irshift{x}}=\ilshift{x}
+% \quad
+% \overline{\irev{x}}=\irev{x}
+% \\
+% b\not\in\{\ilshift{x},\irshift{x},\irev{x}, \instr;\instr \}
+% \\
+% \emptyset=\text{ no element in stack}
+% \end{array}
+% $
+% }
+% 
+% \caption{Pushdown automata for \texttt{neutral}}
+% \label{fig:pushdown-neu}
+% \end{figure}
+% \texttt{neutral}'s definition in \Cref{fig:pushdown-neu}
+% views $\instr$ as a string concatenated
+% by the sequence operation ($;$) and requires $\instr$ to be
+% accepted according to a family of pushdown automatas $\{G\}_{x}$ for every $x$ presented in $\instr$. 
+% A program $\instr$ is \texttt{neutral}, iff, $\instr$ as a string is
+% accepted by all the automatas in $\{G\}_{x}$.
+
+\noindent\textbf{\textit{Soundness.}}
+We prove that well-typed \pqasm programs are well defined; i.e., the
+type system is sound with respect to the semantics. 
+The type soundness theorem relies on a well-formed definition of a program $e$, $FV(e)\subseteq \Sigma$, meaning that all free variables in $e$ are bounded by $\Sigma$.
+We also need the definition of the well-formedness of an \pqasm state as follows.
+
+\begin{definition}[Well-formed \pqasm state]\label{def:well-formed}\rm 
+  A state $\Phi$ is \emph{well-formed}, written
+  $\Omega \vdash \Phi$, iff:
+\begin{itemize}
+\item For every $q$ such that $\Omegaty(q) = \tnort$ or $\Omegaty(q) = \thadt$ ,
+  $\Phi(q)$ has the form $\aket{b}{1}$.
+
+\item For every $q$ such that $\Omegaty(q) = \trott$, $\Phi(q)$ has the form $\qket{r}$.
+\end{itemize}
+\end{definition}
+
+\noindent
+Type soundness is stated as two theorems: type progress and preservation; the proof is by induction on $\instr$ and is mechanized in Rocq.
+
+\begin{theorem}\label{thm:type-progress}\rm[\pqasm Type Progress]
+If $\emptyset; \Omega \vdash e \triangleright \Omega'$, $FV(e)\subseteq \emptyset$, and $\Omega \vdash \Phi$, then either $e = \sskip$ or there exists $r$, $e'$, and $\Phi'$, such that $(\Phi,e)\xrightarrow{r}(\Phi',e')$.
+\end{theorem}
+
+\begin{proof}
+Fully mechanized proofs were done by induction on type rules using Rocq.
+\end{proof}
+
+\begin{theorem}\label{thm:type-sound-pqasm}\rm[\pqasm Type Preservation]
+If $\Sigma; \Omega \vdash e \triangleright \Omega'$, $FV(e)\subseteq \Sigma$, $\Omega \vdash \Phi$ and $(\Phi,e)\xrightarrow{r} (\Phi',e')$, then there exists $\Omega_a$, such that $\Sigma;\Omega_a\vdash e' \triangleright \Omega'$ and $\Omega_a \vdash \Phi'$.
+\end{theorem}
+
+\begin{proof}
+Fully mechanized proofs were done by induction on type rules using Rocq.
+\end{proof}

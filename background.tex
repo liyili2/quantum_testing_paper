@@ -1,0 +1,105 @@
+\vspace*{-0.5em}
+\section{Background}
+\label{sec:background}
+
+Here, we provide background information on Quantum Computing. 
+
+\noindent\textbf{\textit{Quantum Data}.} A quantum datum
+%\footnote{Most literature describes quantum data as \emph{quantum states}. Here, we refer to them as quantum data to avoid confusion between program and quantum states.  } %
+consists of one or more quantum bits (\emph{qubits}), which can be expressed as a two-dimensional vector $\begin{psmallmatrix} \alpha \\ \beta \end{psmallmatrix}$ where the \emph{amplitudes} $\alpha$ and $\beta$ are complex numbers and $|\alpha|^2 + |\beta|^2 = 1$.
+%
+We frequently write the qubit vector as $\alpha\aket{0}{1} + \beta\aket{1}{1}$ (the Dirac notation \cite{Dirac1939ANN}), where $\aket{0}{1} = \begin{psmallmatrix} 1 \\ 0 \end{psmallmatrix}$ and $\aket{1}{1} = \begin{psmallmatrix} 0 \\ 1 \end{psmallmatrix}$ are \emph{computational basis-vectors} and $\alpha\aket{0}{1}$ and $\beta\aket{1}{1}$ are basis-kets. The subscripts indicate the number of qubits for the basis-ket. When no necessity of mentioning qubit numbers, we denote the basis-ket as $\ket{0}$ or $\ket{1}$ by omitting them.
+When both $\alpha$ and $\beta$ are non-zero, we can think of the qubit being ``both 0 and 1 at once,'' a.k.a. in a \emph{superposition} \cite{mike-and-ike}, e.g., $\frac{1}{\sqrt{2}}(\aket{0}{1} + \aket{1}{1})$ represents a superposition of $\aket{0}{1}$ and $\aket{1}{1}$.
+Larger quantum data can be formed by composing smaller ones with the \emph{tensor product} ($\otimes$) from linear algebra, e.g., the two-qubit datum $\aket{0}{1} \otimes \aket{1}{1}$ (also written as $\aket{01}{2}$) corresponds to vector $[~0~1~0~0~]^T$.
+% 
+However, many multi-qubit data cannot be \emph{separated} and expressed as the tensor product of smaller data; such inseparable datum states are called \emph{entangled}, e.g.\/ $\frac{1}{\sqrt{2}}(\aket{00}{2} + \aket{11}{2})$, known as a \emph{Bell pair}, which can be rewritten to $\Msum_{d=0}^{1}{\frac{1}{\sqrt{2}}}{\aket{dd}{2}}$, where $dd$ is a bit string consisting of two bits, both being the same (i.e., $d=0$ or $d=1$). Each term $\frac{1}{\sqrt{2}}\aket{dd}{2}$ is named a \emph{basis-ket}, consisting an amplitude $\frac{1}{\sqrt{2}}$ and a basis vector $\aket{dd}{2}$.
+
+%
+%It is computationally hard to determine if an arbitrary quantum value is
+%separable, therefore we say a general quantum value is \emph{possibly
+%  entangled}.
+
+%   
+% An $n$-qubit quantum value state is typically represented as a $2^n$ dimensional
+% vector. Alternatively, the values can be represented in different forms. For
+% example, an initialized qubit typically has a value $\ket{0}$ or $\ket{1}$,
+% called a \textit{normal typed value} ($\tnort$) in \qafny. A collection of $n$
+% qubits that are in superposition but not entangled, i.e.,
+% $\frac{1}{\sqrt{2}}(\ket{0} + \alpha(r_0)\ket{1})\otimes ... \otimes
+% \frac{1}{\sqrt{2}}(\ket{0} + \alpha(r_{n-1})\ket{1})$, can be encoded as
+% $\shad{2^n}{n\sminus 1}{\alpha(r_j)}$, where $\alpha(r_j)=e^{2\pi i r_j}$ and
+% $r_j \in \mathbb{R}$, which is called a \textit{Hadamard typed value} ($\thadt$)
+% in \qafny.
+
+%Value $\alpha(r_j)$ is the \emph{local phase} of the state, which is a unique quantum amplitude whose norm is $1$, i.e., $\slen{\alpha(r_j)}=1$. 
+%In the state $\frac{1}{\sqrt{2}}(\ket{0} + \ket{1})$, we can view the local phase $1$ as $e^{0}$, and $\frac{1}{\sqrt{2^n}}e^{0}$ is the amplitude for every basis-ket.
+%This is not a standard form for all unentangled multi-qubit value states but rather a convenient way of representing a particular class of states common in many quantum algorithms, which can be utilized for proof automation.
+
+% The most general representation for $n$-qubit values is as a linear combination of basis-kets \cite{mike-and-ike}, or in
+% Dirac notation in \cite{Dirac1939ANN}, as $\sch{m}{z_j}{\ket{c_j}}$, where $z_j\in \mathbb{C}$ is an amplitude, $c_j$ is an $n$-length bitstring called a \emph{basis} (computational basis only), and $m < 2^n$. The above notation is the same as ${z_0}\ket{c_0}+...+{z_{m}}\ket{c_{m}}$; each $j$-th element ${z_j}\ket{c_j}$ represents a \emph{basis-ket} in the superposition value state. 
+% This is called an \textit{entanglement typed value} ($\tcht$) in \qafny.
+% For example, the bell pair can be represented as $\sch{1}{\frac{1}{\sqrt{2}}}{\ket{c_j}}$ with $c_0=00$ and $c_1=11$.
+% Notice that the basis-kets' bases ($c_j$) are all distinct in a value state. 
+% \qafny identifies these three different representations and uses a type system to transform quantum-state representations properly.
+
+%%Notice that the amplitudes satisfy the relation $\sum_{0}^{m}\slen{z_j}^2 = 1$. However, in some intermediate program evaluation in QNP, we lose the restriction to be $\sum_{0}^{m}\slen{z_j}^2 \le 1$, because a state $\sch{m}{z_j}{c_j}$ can be split into two parts as $\sch{m}{z_j}{c_j}=\schii{m_1}{z_i}{c_i}+\schk{m_2}{z_k}{c_k}$, and we might only want to reason about a portion of the state $\schii{m_1}{z_i}{c_i}$ locally so that $\sum_{0}^{m_1}\slen{z_i}^2 < 1$. 
+%
+%%In QNP, each quantum state is associated with a \emph{session}, referring to a cluster of quantum array pieces possibly entangled. We can view a session as a virtual quantum array that manages quantum physical qubit array pieces living in different locations but is locally connected through entanglement. See \Cref{sec:quantum-state}.
+
+          \begin{wrapfigure}{r}{3cm}
+          %  \vspace*{-0.2em}
+            {\qquad
+              \footnotesize
+              \Qcircuit @C=0.5em @R=0.5em {
+                \lstick{\ket{0}} & \gate{H} & \ctrl{1} & \qw &\qw & & \dots & \\
+                \lstick{\ket{0}} & \qw & \targ & \ctrl{1} & \qw & &  \dots &  \\
+                \lstick{\ket{0}} & \qw & \qw   & \targ & \qw & &  \dots &  \\
+                & \vdots &   &  &  & & & \\
+                & \vdots &  & \dots & & & \ctrl{1} & \qw  \\
+                \lstick{\ket{0}} & \qw & \qw & \qw &\qw &\qw & \targ & \qw
+              }
+            }
+            \caption{GHZ Circuit}
+            \label{fig:background-circuit-examplea}
+          \end{wrapfigure}
+          
+\noindent\textbf{\textit{Quantum Computation and Measurement.}} 
+%Quantum programming languages are essentially hybrid, containing both quantum and classical components, so that they can collaboratively finish a task (the \emph{QRAM model}~\cite{Knill1996}).
+%
+Computation on a quantum datum consists of a series of \emph{quantum operations}, each acting on a subset of qubits in the quantum datum. In the standard form, quantum computations are expressed as \emph{circuits}, as in \Cref{fig:background-circuit-examplea}, which depicts a circuit that prepares the Greenberger-Horne-Zeilinger (GHZ) state \cite{Greenberger1989} --- an $n$-qubit entangled datum of the form: $\ket{\text{GHZ}^n} = \frac{1}{\sqrt{2}}(\bigotimes^n \ket{0}+\bigotimes^n\ket{1})$.
+In these circuits, each horizontal wire represents a qubit, and boxes on these wires indicate quantum operations, or \emph{gates}. The circuit in \Cref{fig:background-circuit-examplea} uses $n$ qubits and applies $n$ gates: a \emph{Hadamard} (\coqe{H}) gate and $n-1$ \emph{controlled-not} (\coqe{CNOT}) gates. Applying a gate to a quantum datum \emph{evolves} it.
+% 
+Its traditional semantics is expressed by multiplying the datum's vector form by the gate's corresponding matrix representation: $n$-qubit gates are $2^n$-by-$2^n$ matrices.
+% 
+Except for measurement gates, a gate's matrix must be \emph{unitary} and thus preserve appropriate invariants of quantum data's amplitudes. 
+%
+A \emph{measurement} operation extracts classical information from a quantum datum. It collapses the datum to a basis-ket with a probability related to the datum's amplitudes (\emph{measurement probability}), e.g., measuring $\frac{1}{\sqrt{2}}(\aket{0}{1} + \aket{1}{1})$ collapses the datum to $\aket{0}{1}$ or $\aket{1}{1}$, each with probability $\frac{1}{2}$. The ket values correspond to classical values $0$ or $1$, respectively. 
+A more general form of quantum measurement is \emph{partial measurement}, which measures a subset of qubits in a qubit array;
+% 
+such operations often have simultaneity effects due to entanglement, \ie{} in a Bell pair $\frac{1}{\sqrt{2}}(\aket{00}{2} + \aket{11}{2})$, measuring one qubit guarantees the same outcome for the other --- if the first bit is measured as $0$, the second bit will be measured as $0$.
+
+\noindent\textbf{\textit{Quantum Oracles.}} Quantum algorithms manipulate input information encoded in ``oracles'', which are callable black-box circuits. 
+%For example, Grover's algorithm for unstructured quantum search \cite{grover1996,grover1997} is a general approach for searching a quantum ``database,'' which is encoded in an oracle for a function $f : \{0, 1\}^n \to \{0, 1\}$. Grover's algorithm finds an element $x \in \{0, 1\}^n$ such that $f(x) = 1$ using $O(2^{n/2})$ queries, a quadratic speedup over the best possible classical algorithm, which requires $\Omega(2^n)$ queries. 
+Quantum oracles are usually quantum-reversible implementations of classical operations, especially arithmetic operations. Their behavior is defined in terms of transitions between single basis-kets.
+We can infer the global state behavior based on the single basis-ket behavior through the quantum summation formula below. This resembles an array map operation in \Cref{fig:intros2}.
+\oqasm in VQO~\cite{oracleoopsla} is a language that permits the definitions of quantum oracles with efficient verification and testing facilities using the following summation formula:
+%The main approach in VQO is to utilize the summation formula to disallow the appearance of quantum entanglement state in analyzing programs,
+%whereas \pqasm disregards if a state is entangled or a simple superposition without entanglement and utilizes the summation formula to reduce a quantum superposition state to a singleton basis-ket state to perform analysis.
+
+{\footnotesize
+  \begin{mathpar}
+ \inferrule[]{ \forall j\,.\, x_j \longrightarrow f(x_j)  }{ \Sigma_j \alpha_j \ket{x_j} \longrightarrow \Sigma_j \alpha_j f(\ket{x_j})}
+ % \inferrule[]{ \forall j\,.\, (x_j,y) \longrightarrow f(x_j,y) }{ \Sigma_j \alpha_j \ket{x_j}\ket{y} \longrightarrow \Sigma_j \alpha_j f(\ket{x_j}\ket{y})}
+    \end{mathpar}
+}
+
+\noindent\textbf{\textit{Repeat-Until-Success Quantum Programs.}} A repeat-until-success program utilizes the probabilistic feature of partial measurement operations. We first set up a one-step repeat-until-success by linking the desired quantum state with the success measurement of a certain classical value. If such a value is observed after measurement, we know that the desired state is successfully prepared; otherwise, we repeat the one-step procedure.
+One example of a one-step repeat-until-success procedure is in \Cref{fig:intros-example} to repeat the $n$ basis-ket superposition state.
+If we measure out $v=1$, the desired state $\varphi$ is prepared; otherwise, we repeat the procedure.
+
+\noindent\textbf{\textit{No Cloning.}} 
+The \emph{no-cloning theorem} indicates no general way of exactly copying a quantum datum. In quantum circuits, this is related to ensuring the reversible property of unitary gate applications.
+% 
+For example, the controlled node and controlled body of a quantum control gate cannot refer to the same qubits, e.g., $\ictrl{q}{\iota}$ violates the property if $q$ is mentioned in $\iota$.
+% 
+\pqasm{} enforces no cloning through our type system.

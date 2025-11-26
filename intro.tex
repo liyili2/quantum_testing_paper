@@ -1,0 +1,221 @@
+\section{Introduction}
+\label{sec:intro}
+
+% QC offers speedups
+% - Source of speedup: Oracle, run coherently
+Despite recent advances ~\cite{morphq_bugs,fuzz4all,10.1109/ASE51524.2021.9678798,fortunato,long:24,QDiff}, quantum program developers still lack tools to quickly validate program correctness---testing a program with many test inputs in a short time---as well as other properties when writing comprehensive quantum programs ~\cite{gill2024quantumcomputingvisionchallenges,MattSwayne}.
+%By validating the initial quantum state preparation procedure, we ensure that the quantum program will produce the right state when it is executed on a quantum computer.
+Testing quantum programs directly on quantum hardware is problematic because running actual quantum computers is expensive, and the probabilistic nature of quantum computing means repeated trials may be necessary to validate correctness, driving up costs further.
+Ideally, we should ensure that a program satisfies user specifications before running it on quantum hardware.
+Unfortunately, such a framework might not exist for validating (testing) a quantum program for arbitrary properties since quantum programs are not classically simulatable without an exponential number of classical bits relative to qubits.
+%, and because of the difficulty of simulating true quantum randomness.
+
+%Quantum computers can be used to program substantially faster algorithms compared to those written for classical computers.
+%For example, Shor's algorithm \cite{shors} can factor a number in polynomial time, which is not known to be possible on classical computers.
+%Developing more comprehensive quantum programs and algorithms is essential for the continued practical development of Quantum Computing (QC)
+% Alex's sentence rewrite (please check):
+%Since executing quantum programs on quantum hardware is expensive and probabilistic, one of the key challenges of QC is enabling reasoning about quantum program correctness properties and effective validation using a deterministic classical computer.
+%
+% A key quantum programming facility is an effective validation framework that can assert program properties, at least the correctness properties, on a classical computer.
+%
+%Since quantum programs are not classically simulatable without an exponential number of classical bits relative to qubits (and because of the difficulty of simulating true quantum randomness), such a framework might not exist for testing a quantum program for arbitrary properties.
+%Many verification approaches have been proposed for quantum algorithms~\cite{qhoreusage,qhoare,qbricks,qsepa,qseplocal,VOQC,li2024}.
+%These include using interactive theorem provers, such as Isabelle, Coq, and Why3, and building quantum semantic interpretations and libraries --- however, developing any programs via verification frameworks can be time-consuming.
+
+
+A quantum validation framework needs to satisfy three key design goals.
+
+\begin{itemize}
+\item Programmers can develop a quantum program based on a proper abstraction, with respect to high-level program properties, without worrying too much about low-level gates.
+
+\item The framework contains a scalable and effective validator to quickly judge the correctness of a user-defined program, as well as other properties, based on certain types of quantum program patterns.
+
+\item The validated program can be compiled into the quantum circuit for execution.
+\end{itemize}
+
+\begin{figure}[h]
+\vspace*{-1em}
+  \includegraphics[width=0.7\textwidth]{pflow}
+   \caption{The QSV Flow}
+   \vspace*{-0.7em}
+\label{fig:qsv}
+\end{figure}
+
+We propose the Quantum State preparation program Validation framework (QSV), which has the flow in \Cref{fig:qsv}, permitting effective validation of state preparation programs (The program limitation is discussed in \Cref{sec:conclusion}).
+It includes three components. Users can develop their programs in a PQASM language, specifically to allow them to write state preparation programs in a high-level abstraction. Such programs can be validated by our validator, based on QuickChick \cite{quickchick}  (a Rocq-based property-based testing facility),
+and we show several quantum program patterns that can be effectively validated via our framework.
+After a program is adequately developed in our framework, users can use our certified circuit compiler to compile the program to a quantum circuit, executable in quantum hardware.
+
+\subsection{Motivating Examples}\label{sec:motivation}
+
+We begin by discussing a simple state preparation subroutine, preparing a superposition of $n$ distinct basis-ket states, appearing in many algorithms \cite{Gorjan2007,mike-and-ike}, having the following program transition property predicate (a pre-state is transitioned to a post-state connected by $\to$) with program input of a length $m$ qubit array, initialized as $\aket{0}{m}$, and output a superposition of $n$ different basis-ket states, each with basis-vector $\aket{k}{m}$.
+
+{\small
+\begin{center}
+$
+\aket{0}{m}\to\sum_{j=0}^{n-1}\frac{1}{\sqrt{n}}\aket{j}{m}
+$
+\end{center}
+}
+
+%Previously, VQO \cite{oracleoopsla} developed a toolchain that is capable of effectively testing (on a classical computer) quantum arithmetic oracle programs, which is a subset of quantum programs and is a key component in many quantum algorithms.
+%This indicated that we could identify a subset of quantum programs that might be effectively testable for some key properties.
+%
+%This paper proposes a new system, \pqasm, which intends to be a framework for effectively testing quantum superposition state preparation programs, at least for the correctness properties.
+%A quantum state preparation program can be generalized as the starting component of a quantum algorithm.
+
+Generally speaking, \emph{a state preparation program can be defined as the starting component of a quantum algorithm.}
+A quantum algorithm typically starts with a length $m$ qubit array, each qubit initialized as zero ($\aket{0}{m}$) state, and prepares a superposition state $\sum_j \alpha_j \aket{c_j}{m}$ --- a linear sum of pairs (basis-kets) of complex amplitude $\alpha_j$ and bitstring (basis-vector) $c_j$ such that $\sum_j \slen{\alpha_j}^{2} =1 $ --- via a series of quantum operations.
+
+Superposition is a key feature of quantum states, and quantum computers can execute programs with superposition states to query all possible inputs simultaneously, as discussed in \Cref{sec:background}.
+Many quantum algorithms require a comprehensive design of state preparation components with different superposition structures.
+For example, in Shor's algorithm, we need to prepare a superposition of pairs of a number ($x$) and the modular multiplication result of the number ($\modexp{c}{x}{n}$) (\Cref{fig:mod-mult}).
+
+A difficulty in developing state preparation programs is that quantum program operations might affect every basis-ket in a superposition that might contain exponentially many basis-ket states, unlike the classical programs, where only a single basis-ket might be affected.
+For example, in \Cref{fig:intros2}, a function $f$ is applied to every basis-ket in the quantum superposition state after all Hadamard operations were applied.
+Moreover, many quantum languages are circuit gate-based \cite{Qiskit2019,tket,Cross2017,10.1145/3505636}.
+These hinder the quantum program development as writing programs becomes unintuitive.
+For example, given the above simple $n$ basis-ket program property, it is not straightforward to develop the program.
+
+\begin{figure}[t]
+\vspace*{-0.5em}
+{\footnotesize
+\begin{minipage}[t]{0.46\textwidth}
+\subcaption{State Preparation Circuit}
+\label{fig:intros2}
+\vspace*{0.5em}
+{\scriptsize
+  \Qcircuit @C=0.5em @R=0.5em {
+   & & \qw    & \gate{H} & \qw & \multigate{3}{{ f(\ket{j})=(-i)^{j}\aket{j}{m}}}   & \qw &\qw & \qw \\
+  \push{x:\aket{0}{m}\quad} & &  \vdots &          &     &                                          &    \rstick{{ {\Msum_{j=0}^{2^m\sminus 1}(-i)^{j}\aket{j}{m}}}} & &\\
+   & & \vdots  &          &     &                                          &     &       &  \\
+   & &  \qw   & \gate{H} & \qw &  \ghost{{ f(\ket{j})=(-i)^{j}\aket{j}{m}}}         &\qw  &\qw    & \qw
+      \gategroup{1}{2}{4}{2}{1em}{\{}
+    }
+}
+\end{minipage}
+\hfill
+\begin{minipage}[t]{0.46\textwidth}
+\subcaption{Preparing Superposition of $n$ Basis-kets}
+\label{fig:intros-example}
+\vspace*{0.5em}
+ { \scriptsize
+  \Qcircuit @C=0.5em @R=0.5em {
+    &                     & & \qw & \gate{H} & \qw & \qw & \multigate{6}{\texttt{$\qbool{x}{<}{n}{y}$}} & \qw & \qw & \qw & \\
+    & \push{x:\aket{0}{m}\quad} & & \qw & \gate{H} & \qw & \qw &  \ghost{\texttt{$\qbool{x}{<}{n}{y}$}}       &\qw & \qw & \qw &  \\
+    & & &  &       & & &  & & & & \push{\varphi} \\
+    & & &  & \dots & & & & & & & \\
+    & & & & & & & & & & & \\
+    &                     & & \qw & \gate{H} & \qw & \qw &   \ghost{\texttt{$\qbool{x}{<}{n}{y}$}}      & \qw & \qw & \qw & \\
+    & \push{y:\aket{0}{1}\quad} & & \qw & \qw      & \qw & \qw & \ghost{\texttt{$\qbool{x}{<}{n}{y}$}}        & \qw & \qw & \meter & \push{v} 
+    \gategroup{1}{3}{6}{3}{1em}{\{}
+    \gategroup{1}{11}{6}{11}{1em}{\}}
+    }
+  }
+\end{minipage}
+}
+\vspace*{-1em}
+\caption{$x$ has $m$ qubits, and $y$ register has $1$ qubit. The right figure is one step in the repeat-until-success program to prepare the superposition state. $\varphi=\frac{1}{\sqrt{n}}\sum_{j=0}^n\aket{j}{m}$ if $v=1$; otherwise, $\varphi=\frac{1}{\sqrt{2^m-n}}\sum_{j=n}^{2^m}\aket{j}{m}$.}
+\label{fig:circuits}
+\vspace*{-1em}
+\end{figure}
+
+\Cref{fig:intros-example} shows a one-step procedure of the repeat-until-success program implementation of the $n$ basis-ket program.
+The procedure starts with a series of Hadamard operations to prepare a uniform superposition of $2^m$ basis-kets as $\frac{1}{\sqrt{2^m}}\sum_{j=0}^{2^m}\aket{j}{m}$,
+and then compares each basis-ket with the natural number $n$ and stores the comparison result in the extra $y$ qubit.
+After measuring the $y$ qubit and if the result is $1$, all the basis-kets ($\alpha_j\aket{j}{m}$), having bitstring numbers $j \ge n$, disappear, while those having bitstrings $j<n$ will stay in $x$'s quantum state; thus, the correct state is prepared.
+Since the measurement result $1$ happens probabilistically, the repeat-until-success program requires repeating the one-step procedure many times to prepare the target state probabilistically.
+In writing the program, a key component is the comparator $\qbool{x}{<}{n}{y}$, comparing every basis-vector of a quantum array $x$ with number $n$ and storing the result in qubit $y$.
+Such arithmetic operations have effective implementations \cite{oracleoopsla} and many works discuss circuit-level optimizations \cite{VOQC,Xu2022}.
+Therefore, QSV abstracts all these quantum arithmetic operations and relieves the pain of writing quantum programs.
+The QSV compiler compiles and optimizes the arithmetic operations to quantum circuits. 
+Moreover, we also provide types to classify different program patterns for users to write state preparation programs.
+
+Even if we permit high-level abstractions in QSV, validating a program might still be challenging because of the exponential basis-kets in a quantum state,
+e.g., the output state $\sum_{j=0}^{n-1}\frac{1}{\sqrt{n}}\aket{j}{m}$ might contain exponentially many basis-kets, checking them individually might be challenging.
+In developing our validator, we have two observations on quantum algorithms.
+First, almost all quantum algorithms start with $m$ different Hadamard operations to prepare a uniform superposition having $2^m$ basis-kets. These beginning Hadamard operations are simple enough and do not need to be validated, but they provide the source of superposition state for later program operations to carve on. 
+Second, even though quantum operations are probabilistic, one can "determinize" their behaviors.
+If we consider the superposition of basis-kets as an array of basis-kets, quantum operations, except measurement, behave similarly to higher-order map functions applying to the quantum state. Measurement behaves similarly to a set selection, selecting a basis-ket element in the array, and the probability of such selection can be computed based on the amplitude value associated with the basis-ket.
+
+In QSV, we classify beginning Hadamard operations as a special \cn{Had} type, to indicate that they are the source of the superposition state. When performing testing, instead of faithfully representing their operational behavior, QSV adopts a random pick of an individual basis-ket state as a representative, and validates programs based on transitions of the basis-ket. A measurement operation is then determinized and its probability is simply calculated via the amplitude value in the basis-ket.
+
+For example, in dealing with the $n$ basis-ket program above, after applying the Hadamard operations, the program property is turned as the one on the left below, where $\sum_{j=0}^{2^m\sminus 1}\frac{1}{\sqrt{2^m}}\aket{j}{m}$ being the result of applying $m$ Hadamard operations. The QSV process of determinizing the basis-kets is to select a particular $j$, which turns the program property to be the right one.
+
+{\footnotesize
+\begin{mathpar}
+ \inferrule[]{}{ \sum_{j=0}^{2^m\sminus 1}\frac{1}{\sqrt{2^m}}\aket{j}{m}\to\sum_{j=0}^{n\sminus 1}\frac{1}{\sqrt{n}}\aket{j}{m}}
+  
+   \inferrule[]{}{\forall j \in [0,2^m) \,,\, \frac{1}{\sqrt{2^m}}\aket{j}{m} \to(\frac{1}{\sqrt{n}}\aket{j}{m} \wedge j \in [0, n))}
+    \end{mathpar}
+}
+
+Essentially, the validation process based on the right property is to assume a single basis-ket $\frac{1}{\sqrt{2^m}}\aket{j}{m}$ with a bitstring $j \in [0,2^m)$, then to validate to see if the output is the bitstring $j$ within range of $[0,n)$ and the associated amplitude being $\frac{1}{\sqrt{n}}$.
+Via a property-based testing facility, such as QuickChick, by testing the program with enough candidate basis-kets, it will be highly likely that our validator can capture a bug if there is any. 
+
+After validation, we compile the program to a quantum circuit via our certified compiler.
+
+%In preparing a quantum state, we utilize a generalized summation formula on the right above,
+%where the correctness of a function $f$, applying to a pair, is defined as $(x_j,y) \longrightarrow f(x_j,y)$, for all $j$;
+%and the semantics of applying the function to a superposition state is inferred as the bottom transition.
+%In many state preparation programs, a standard program structure first applies different Hadamard operations and then applies a function $f$ having a similar structure above.
+
+%In analyzing many state preparation programs, we found that a typical starting pattern is that one begins with a step of initializing $m$ different $\ket{0}$ qubits followed by many Hadamard operations to prepare a simple uniform superposition state ($\frac{1}{\sqrt{2^m}}\sum_{j=0}^{2^m}\ket{j}$).
+
+
+%Using the above correctness property for a program $e$, the testing can be defined as giving a superposition input state $\varphi$. We pick a candidate basis-ket $\ket{j}$, such that $j\in[0,2^m)$, and then the program outputs another superposition state $\varphi'$, with a candidate basis-ket $\ket{j}$, with the restriction $j\in [0,n)$.
+%The testing still utilizes the summation formula above, but in the opposite direction, i.e., the correctness property is a transition between two superposition states. We test the property by picking up candidate basis-kets and ensure that the output candidate basis-ket satisfies certain restrictions, such as the above restriction $j\in [0,n)$.
+
+\ignore{
+State preparation programs typically contain a quantum oracle subcomponent, effectively definable in VQO \cite{oracleoopsla}.
+For example, the comparison program ($x<n @ y$) in \Cref{fig:intros-example} has the functional behavior $\ket{x}\ket{0}\to \ket{x}\ket{x<n}$, where it takes in length $m$ qubit array $x$ and a single qubit ($y=\ket{0}$), and stores the comparison result of the number represented as a bitstring ($x$) with $n$ in the single qubit
+i.e., each basis-state of a length $m$ qubit array $x$ can be viewed as a length $m$ bitstring, so the quantum comparison essentially compares each basis-state in the length $m$ qubit array with a number $n$.
+%In \Cref{fig:mod-mult}, for each basis-state $\ket{u}$ in the qubit array $u$, each modulo-multiplication operation applies 
+
+In preparing a quantum state, we utilize a generalized summation formula on the right above,
+where the correctness of a function $f$, applying to a pair, is defined as $(x_j,y) \longrightarrow f(x_j,y)$, for all $j$;
+and the semantics of applying the function to a superposition state is inferred as the bottom transition.
+In many state preparation programs, a standard program structure first applies different Hadamard operations and then applies a function $f$ having a similar structure above.
+
+A key difference between the correctness property of a quantum oracle operation and a state preparation is that the correctness of a quantum oracle operation is defined as the correctness of $f$ above, while the correctness of a state preparation is defined as the inferred linear sum state,
+i.e., in \Cref{fig:circuits}, we actually prepare a superposition state, similar to the inferred linear sum state on the left summation formula above.
+To utilize the summation formula for testing the correctness properties, we adopt the symbolic abstraction concept.
+Here, we accept that a linear sum state is hard to test and might contain exponentially many basis-ket states.
+On the other hand, we also notice that the components in a state preparation program might be similar to the function $f$ above,
+where each basis-state is applied the same $f$, even though basis-ket values might differ.
+The general testing procedure in \pqasm can be a two-step process.
+First, we can view the linear sum state as a symbolic representation $\sum_j \eta(j)$, with $\eta(j)$ being an expression capturing the state property of a specific basis-ket.
+Second, testing $f$ on $\eta(j)$ can be effectively performed for a single basis-state $\eta(j)$; we construct many different $\eta(j_v)$ for different $j_v$ and testing $f$ on different $\eta(j_v)$.
+The testing result assures us that the resulting linear sum state $\sum_j f(\eta(j))$ is indeed what we are looking for, a.k.a., satisfying the correctness property.
+}
+
+%1. Quantum programs are not classically simulatable. 
+
+%2. We want testing facilities for quantum programs. Previously, we have VQO for oracle programs. Does it exist other kinds of subsets.
+
+%3. to have a testing facilities, need some abstract interpretation on the properties for program testing.
+
+%4. Symbolic abstraction to perform testing on targeted properties, i.e., program correctness.
+
+%5. Show two examples. CU operations in Shor's algorithm, and repeat-until-success for uniformed superposition.
+
+
+\subsection{Contributions and Roadmap} 
+
+We present QSV, a framework that enables programmers to develop state preparation programs.
+Our contributions are as follows, with all Rocq proofs and experiment results available. We discuss QSV and \pqasm limitations in \Cref{sec:conclusion}.
+
+%\item We present a validated circuit compiler from \qafny to \sqir, showing that the \qafny proof system correctly reflects quantum program semantics due to its sound and completeness.
+
+\begin{itemize}
+\item We present the syntax, semantics, and type system of \pqasm, allowing users to define state preparation programs with the proof of type soundness in Rocq (\Cref{sec:pqasm}).
+
+\item We develop a property-based testing (PBT) framework for validating programs written in \pqasm (\Cref{sec:implementation}) by showing a general flow of constructing such PBT frameworks for validating quantum programs.
+
+\item We certify a compiler from \pqasm to \sqir \cite{VOQC} (\Cref{sec:vqir-compilation}) to ensure that our \pqasm tool correctly reflect quantum program behaviors.
+
+%\item \qafny is based on \emph{classical} separation logic, and we show how to compile from \qafny to classical separation logic. 
+
+\item We evaluate \pqasm via a selection of state preparation programs and demonstrate that QSV is capable of validating the programs (\Cref{sec:evaluation,sec:eval}). 
+These programs were previously considered to be hard or impossible to simulate on classical machines, and some of them (amplitude amplification, hamming weight, and element distinctness state preparation programs) were never verified or validated. We attempted to run these programs in an industrial quantum simulator, Qiskit and DDSim \cite{ddsim} (a key in the Munich Quantum Toolkit \cite{mqt}). None of the state preparation programs are simulatable in the simulators (\Cref{sec:eval}) if the input qubit length is a normal one (60 qubits per register and up to 361 qubits as the total input qubit size). In contrast, QSV can effectively run 10,000 test cases to validate these large qubit length programs via QuickChick. 
+\end{itemize}
